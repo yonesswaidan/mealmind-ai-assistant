@@ -131,6 +131,11 @@ class ToolExecutor:
                             "Brug de resultater, der allerede er beregnet.")
         self.ml_calls += 1
         results, summary = run_ml(self.ml_registry, self.store, function, params)
+        # Modeller trænet her er ad hoc-analyser. På syntetiske data må de aldrig fremstå som produktionsklare.
+        summary = {**summary, "data_origin": "syntetiske testdata" if self.source.is_demo else "rigtige data",
+                   "production_ready": False}
+        if self.source.is_demo:
+            summary["data_warning"] = "Trænet på syntetiske demodata - kun til afprøvning, ikke produktionsklar."
         info = {"function": function, "summary": summary,
                 "results": [describe_result(r, min(self.settings.preview_rows, 15)) for r in results]}
         return ToolOutcome(self._payload(info), summary=f"{function} færdig", events=[{

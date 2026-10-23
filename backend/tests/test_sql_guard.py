@@ -71,6 +71,11 @@ def test_databricks_short_names_are_qualified():
     "SELECT * FROM other_catalog.mealmind.meal_events",
     "SELECT * FROM read_files('/Volumes/x')",
     "SELECT ai_query('model', 'prompt')",
+    "SELECT ai_generate_text(meal_name, 'model') FROM meal_events",
+    "SELECT ai_analyze_sentiment(meal_name) FROM meal_events",
+    "SELECT * FROM vector_search(index => 'x', query => 'y')",
+    "SELECT http_request(conn => 'x', method => 'GET', path => '/')",
+    "SELECT try_reflect('java.lang.System', 'getenv')",
 ])
 def test_databricks_rejects_unsafe(sql):
     with pytest.raises(UnsafeQueryError):

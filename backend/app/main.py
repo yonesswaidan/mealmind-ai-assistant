@@ -15,11 +15,27 @@ from app.agent.agent import AgentDeps, ChatRequest, run_agent
 from app.agent.llm import create_llm, credentials_available
 from app.agent.prompts import build_system_prompt
 from app.config import Settings, get_settings
-from app.data.sources import create_source
+from app.data.sources import DatabricksSource, DataSource, QueryError, create_source
 from app.tools.ml import build_registry
 from app.tools.registry import tool_definitions
 
 log = logging.getLogger("assistant")
+
+
+def open_source(settings: Settings) -> tuple[DataSource, dict]:
+    """Åbner datakilden, indlæser skemaet og kontrollerer at Databricks-identiteten kun kan læse."""
+    source = create_source(settings)
+    source.tables()  # indlæs skema ved opstart, så første spørgsmål ikke venter
+    status: dict = {"source_error": None, "read_only_check": None}
+    if isinstance(source, DatabricksSource):
+        report = source.privilege_report()
+        status["read_only_check"] = report
+        if report["status"] == "write_access":
+            if settings.databricks_enforce_read_only:
+                raise QueryError(report["message"] + " AIDA starter ikke med en identitet, der kan skrive "
+                                 "(DATABRICKS_ENFORCE_READ_ONLY=true).")
+            log.warning(report["message"])
+    return source, status
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -27,8 +43,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        source = create_source(settings)
-        source.tables()  # indlæs skema ved opstart, så første spørgsmål ikke venter
+        try:
+            source, status = open_source(settings)
+        except (ValueError, QueryError) as e:
+            if not (settings.allow_demo_fallback and settings.data_source != "demo"):
+                raise RuntimeError(f"Datakilden '{settings.data_source}' kunne ikke åbnes: {e}") from e
+            log.error("Datakilden '%s' kunne ikke åbnes - bruger DEMODATA: %s", settings.data_source, e)
+            source, status = open_source(settings.model_copy(update={"data_source": "demo"}))
+            status["source_error"] = (f"Datakilden '{settings.data_source}' kunne ikke åbnes: {e} "
+                                      "AIDA kører midlertidigt på DEMODATA.")
+        app.state.source_status = status
         registry = build_registry(settings)
         if settings.assistant_test_mode:
             from app.agent.scripted import ScriptedLLM
@@ -92,6 +116,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "model": "scripted-test" if settings.assistant_test_mode else settings.llm_model,
             "test_mode": settings.assistant_test_mode,
             "auth_required": bool(settings.app_access_token),
+            "source_error": request.app.state.source_status["source_error"],
+            "read_only_check": request.app.state.source_status["read_only_check"],
         }
 
     @app.get("/api/datasets", dependencies=[Depends(require_token)])

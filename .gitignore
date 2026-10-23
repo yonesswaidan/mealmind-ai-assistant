@@ -12,3 +12,4 @@ frontend/dist/
 backend/data/export_cache/
 exports/
 *.parquet
+!backend/tests/fixtures/mealmind_export/**/*.parquet

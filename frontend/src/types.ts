@@ -103,4 +103,6 @@ export interface Health {
   model: string
   test_mode: boolean
   auth_required: boolean
+  source_error?: string | null
+  read_only_check?: { status: 'ok' | 'write_access' | 'unknown'; message: string } | null
 }

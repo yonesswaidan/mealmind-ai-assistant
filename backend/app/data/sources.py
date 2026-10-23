@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import threading
+from decimal import Decimal
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -54,6 +55,42 @@ CATEGORICAL_TYPES = ("VARCHAR", "STRING", "BOOLEAN")
 # Tabelkommentarer med disse præfikser markerer syntetiske data (sættes af demo-generatoren og Databricks-pipelinen).
 SYNTHETIC_PREFIXES = ("DEMODATA", "SYNTETISKE TESTDATA")
 _IDENT = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]*$")
+# Rettigheder der er i orden for AIDA's identitet; alt andet (MODIFY, CREATE ..., ALL PRIVILEGES, ejerskab) afvises.
+READ_PRIVILEGES = {"SELECT", "USE CATALOG", "USE SCHEMA", "BROWSE", "EXECUTE", "READ VOLUME"}
+
+# Kendte Databricks-fejl oversat til danske forklaringer med løsning. Den oprindelige fejlkode beholdes.
+_DATABRICKS_ERRORS = [
+    (("INSUFFICIENT_PERMISSIONS", "PERMISSION_DENIED", "does not have", "User does not have"),
+     "Databricks-identiteten mangler rettigheder. Kør databricks/sql/10_grant_aida_readonly.sql (USE CATALOG, "
+     "USE SCHEMA, SELECT) og giv 'Can use' på SQL Warehouse'et."),
+    (("TABLE_OR_VIEW_NOT_FOUND", "SCHEMA_NOT_FOUND", "CATALOG_NOT_FOUND", "NO_SUCH_CATALOG", "cannot be found"),
+     "Tabellen, skemaet eller kataloget findes ikke eller er ikke synligt for identiteten. Er pipelinen kørt, "
+     "og er DATABRICKS_TABLES korrekt?"),
+    (("401", "Unauthorized", "invalid_client", "Invalid access token", "invalid_grant", "403 Client Error"),
+     "Godkendelse mod Databricks fejlede. Tjek DATABRICKS_CLIENT_ID/DATABRICKS_CLIENT_SECRET (eller om "
+     "DATABRICKS_TOKEN er udløbet)."),
+    (("Name or service not known", "nodename nor servname", "Failed to resolve", "getaddrinfo",
+      "Max retries exceeded", "Connection refused"),
+     "Databricks kan ikke nås. Tjek DATABRICKS_SERVER_HOSTNAME og netværksadgang."),
+    (("RESOURCE_DOES_NOT_EXIST", "404 Client Error", "warehouse", "Warehouse"),
+     "SQL Warehouse'et blev ikke fundet eller er stoppet uden adgang til at starte. Tjek DATABRICKS_HTTP_PATH."),
+    (("STATEMENT_TIMEOUT", "timed out", "TIMEOUT"),
+     "Forespørgslen overskred tidsgrænsen. Aggregér mere i SQL eller forøg SQL_TIMEOUT_SECONDS."),
+]
+
+
+def friendly_databricks_error(error: Exception) -> str:
+    first = (str(error).strip().splitlines() or [type(error).__name__])[0][:300]
+    for needles, explanation in _DATABRICKS_ERRORS:
+        if any(n in str(error) for n in needles):
+            return f"{explanation} (Databricks: {first})"
+    return first
+
+
+def _skip_samples(column: str) -> bool:
+    # Id'er og pseudonyme nøgler giver ingen mening for AI'en og skal ikke sendes til AI-tjenesten.
+    name = column.lower()
+    return name.endswith(("_id", "_key", "_json")) or name in ("id", "key")
 
 
 class DuckDBSource:
@@ -92,7 +129,7 @@ class DuckDBSource:
                     columns = []
                     for col, typ, col_comment in cols:
                         samples: list[str] = []
-                        if typ.upper().startswith(CATEGORICAL_TYPES):
+                        if typ.upper().startswith(CATEGORICAL_TYPES) and not _skip_samples(col):
                             samples = [str(r[0]) for r in con.execute(
                                 f'SELECT "{col}", COUNT(*) c FROM "{name}" GROUP BY 1 ORDER BY c DESC LIMIT 12'
                             ).fetchall()]
@@ -168,36 +205,78 @@ class DatabricksSource:
 
     def tables(self) -> list[TableInfo]:
         if self._tables is None:
-            infos = []
-            with self._connect() as con, con.cursor() as cur:
-                for fq in self._expand(cur):
-                    catalog, schema, table = fq.split(".")
-                    cur.execute(
-                        f"SELECT comment FROM `{catalog}`.information_schema.tables "
-                        "WHERE table_schema = :s AND table_name = :t", {"s": schema, "t": table}
-                    )
-                    row = cur.fetchone()
-                    cur.execute(
-                        f"SELECT column_name, full_data_type, comment FROM `{catalog}`.information_schema.columns "
-                        "WHERE table_schema = :s AND table_name = :t ORDER BY ordinal_position",
-                        {"s": schema, "t": table},
-                    )
-                    cols = [ColumnInfo(r[0], r[1], r[2] or "") for r in cur.fetchall()]
-                    for col in cols:
-                        if col.type.upper().startswith(CATEGORICAL_TYPES):
-                            cur.execute(
-                                f"SELECT `{col.name}`, COUNT(*) c FROM `{catalog}`.`{schema}`.`{table}` "
-                                "GROUP BY 1 ORDER BY c DESC LIMIT 12"
-                            )
-                            col.sample_values = [str(r[0]) for r in cur.fetchall()]
-                    cur.execute(f"SELECT COUNT(*) FROM `{catalog}`.`{schema}`.`{table}`")
-                    count = cur.fetchone()[0]
-                    infos.append(TableInfo(fq, (row[0] if row else "") or "", cols, count))
-            if not infos:
-                raise QueryError("Ingen tabeller fundet ud fra DATABRICKS_TABLES. Er pipelinen kørt, og har "
-                                 "identiteten USE SCHEMA/SELECT-rettigheder?")
-            self._tables = infos
+            try:
+                self._tables = self._load_tables()
+            except QueryError:
+                raise
+            except Exception as e:  # connectoren/SDK'et kaster mange forskellige fejltyper
+                raise QueryError(friendly_databricks_error(e)) from e
         return self._tables
+
+    def _load_tables(self) -> list[TableInfo]:
+        infos, missing = [], []
+        with self._connect() as con, con.cursor() as cur:
+            for fq in self._expand(cur):
+                catalog, schema, table = fq.split(".")
+                cur.execute(
+                    f"SELECT comment FROM `{catalog}`.information_schema.tables "
+                    "WHERE table_schema = :s AND table_name = :t", {"s": schema, "t": table}
+                )
+                row = cur.fetchone()
+                cur.execute(
+                    f"SELECT column_name, full_data_type, comment FROM `{catalog}`.information_schema.columns "
+                    "WHERE table_schema = :s AND table_name = :t ORDER BY ordinal_position",
+                    {"s": schema, "t": table},
+                )
+                cols = [ColumnInfo(r[0], r[1], r[2] or "") for r in cur.fetchall()]
+                if row is None or not cols:
+                    # information_schema viser kun objekter, identiteten har adgang til.
+                    missing.append(fq)
+                    continue
+                for col in cols:
+                    if col.type.upper().startswith(CATEGORICAL_TYPES) and not _skip_samples(col.name):
+                        cur.execute(
+                            f"SELECT `{col.name}`, COUNT(*) c FROM `{catalog}`.`{schema}`.`{table}` "
+                            "GROUP BY 1 ORDER BY c DESC LIMIT 12"
+                        )
+                        col.sample_values = [str(r[0]) for r in cur.fetchall()]
+                cur.execute(f"SELECT COUNT(*) FROM `{catalog}`.`{schema}`.`{table}`")
+                count = cur.fetchone()[0]
+                infos.append(TableInfo(fq, (row[0] or "") if row else "", cols, count))
+        if missing:
+            raise QueryError(
+                f"Tabellerne {', '.join(missing)} findes ikke eller er ikke synlige for Databricks-identiteten. "
+                "Kør pipelinen (01-03) og databricks/sql/10_grant_aida_readonly.sql, eller ret DATABRICKS_TABLES.")
+        if not infos:
+            raise QueryError("Ingen tabeller fundet ud fra DATABRICKS_TABLES. Er pipelinen kørt, og har "
+                             "identiteten USE SCHEMA/SELECT-rettigheder?")
+        return infos
+
+    def privilege_report(self) -> dict:
+        """Best effort-kontrol af at identiteten kun kan læse. Rettigheder via grupper er ikke synlige her,
+        så 'ok' betyder 'ingen skriverettigheder fundet' - SQL-guarden er stadig første forsvarslinje."""
+        catalogs = sorted({t.split(".")[0] for t in self.settings.databricks_table_list})
+        found: set[str] = set()
+        owned: list[str] = []
+        try:
+            with self._connect() as con, con.cursor() as cur:
+                for c in catalogs:
+                    for view in ("catalog_privileges", "schema_privileges", "table_privileges"):
+                        cur.execute(f"SELECT DISTINCT privilege_type FROM `{c}`.information_schema.{view} "
+                                    "WHERE grantee = current_user()")
+                        found |= {str(r[0]).upper().replace("_", " ") for r in cur.fetchall()}
+                    cur.execute(f"SELECT table_schema, table_name FROM `{c}`.information_schema.tables "
+                                "WHERE table_owner = current_user()")
+                    owned += [f"{c}.{r[0]}.{r[1]}" for r in cur.fetchall()]
+        except Exception as e:
+            return {"status": "unknown", "message": f"Rettigheder kunne ikke kontrolleres: "
+                                                    f"{friendly_databricks_error(e)}"}
+        extra = sorted(found - READ_PRIVILEGES)
+        if extra or owned:
+            details = ", ".join(extra + [f"ejer af {t}" for t in owned[:5]])
+            return {"status": "write_access", "message": "Databricks-identiteten har mere end læseadgang "
+                    f"({details}). Brug service principalen med kun SELECT (10_grant_aida_readonly.sql)."}
+        return {"status": "ok", "message": "Ingen skriverettigheder fundet for identiteten."}
 
     def run(self, query: ValidatedQuery) -> pd.DataFrame:
         try:
@@ -205,9 +284,13 @@ class DatabricksSource:
                 cur.execute(query.sql)
                 rows = cur.fetchmany(self.settings.sql_row_limit)
                 columns = [d[0] for d in cur.description]
-                return pd.DataFrame.from_records(rows, columns=columns)
         except Exception as e:  # connectoren kaster flere uafhængige fejltyper
-            raise QueryError(str(e).splitlines()[0]) from e
+            raise QueryError(friendly_databricks_error(e)) from e
+        df = pd.DataFrame.from_records(rows, columns=columns)
+        for c in df.columns:  # DECIMAL-kolonner kommer som Decimal-objekter; analyser forventer tal
+            if df[c].map(lambda v: isinstance(v, Decimal)).any():
+                df[c] = pd.to_numeric(df[c], errors="coerce")
+        return df
 
 
 _TABLE_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")

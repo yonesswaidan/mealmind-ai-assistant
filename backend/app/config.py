@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     # Kommasepareret liste af tabeller (catalog.schema.table). "catalog.schema.*" tager alle tabeller i skemaet,
     # fx "mealmind.silver.*,mealmind.gold.*". Tabeller hvis navn starter med "_" udelades.
     databricks_tables: str = ""
+    # Afvis opstart, hvis Databricks-identiteten har mere end læseadgang (MODIFY, CREATE ..., ejerskab).
+    databricks_enforce_read_only: bool = True
+    # Kun til udvikling: kan datakilden ikke åbnes, køres der videre på DEMODATA med en tydelig advarsel.
+    allow_demo_fallback: bool = False
     # JSON-objekt: {"navn": {"endpoint": "...", "description": "..."}} for Databricks Model Serving-endpoints.
     databricks_ml_endpoints: str = ""
 

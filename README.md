@@ -59,6 +59,18 @@ Modeller trænet i Databricks (similarity, segmenter, skip-klassifikation, afvig
 `mealmind.gold.*` og læses med almindelig SQL. `gold.ml_model_status` forklarer, hvilke modeller der er trænet,
 og hvorfor andre mangler (fx for få brugere, eller at MealMind ikke registrerer madspild).
 
+### Rigtige data vs. demodata
+
+| | Demodata (`demo`) | Rigtige data (`local_export` / `databricks`) |
+|---|---|---|
+| Indhold | Syntetisk genererede brugere, måltider og køkkenskab – inkl. opfundne madspildsdata, så alle ML-funktioner kan afprøves | Kun felter MealMind faktisk registrerer, pseudonymiseret. **Ingen madspildsdata** |
+| Mærkat | DEMODATA/TESTDATA i sidebar, banner og hvert svar | Databricks / Udtræk |
+| ML i AIDA | Resultater markeres `data_warning` og `production_ready: false` | Ad hoc-analyser (`production_ready: false`); produktionsmodeller findes kun i `gold.ml_model_status` med `production_ready = true` |
+| Brug | Udvikling og demo | Analyse af MealMind |
+
+Et Databricks-katalog eller udtræk, der er markeret som syntetisk, behandles som demodata. Modeller trænet i
+Databricks på syntetiske data får `data_origin = synthetic`, er aldrig `production_ready` og registreres ikke.
+
 ## Kom i gang lokalt
 
 Kræver Python 3.12–3.14 og Node 20+.
@@ -103,6 +115,20 @@ Hele opsætningen i Azure Portal og Databricks er beskrevet trin for trin i
    kolonnekommentarer fra Unity Catalog vises for AI'en.
 3. Undersøg datasættene: `cd backend && .venv/bin/python -m app.inspect_data`.
 4. Genstart. Sidebaren viser **Databricks**.
+
+Ved opstart kontrollerer AIDA, at identiteten **kun kan læse** (ingen MODIFY/CREATE/ejerskab på kataloget) og
+nægter ellers at starte (`DATABRICKS_ENFORCE_READ_ONLY=true`). Manglende rettigheder, forkert host/HTTP path,
+udløbne credentials og manglende tabeller giver danske fejlbeskeder med løsning. Under udvikling kan
+`ALLOW_DEMO_FALLBACK=true` køre videre på demodata med en advarsel i UI'et – brug det ikke i drift.
+
+### Evaluér værktøjsvalget med den rigtige AI-model
+
+```bash
+cd backend && .venv/bin/python -m app.evaluate_agent --json eval.json
+```
+
+Kører 8 faste spørgsmål (opslag, statistik, graf, prognose, afvigelser, lighed, segmenter, opfølgning) og
+kontrollerer, at agenten bruger de forventede værktøjer, og at svarene bygger på hentede data. Koster tokens.
 
 ### Lokalt udtræk uden Databricks
 

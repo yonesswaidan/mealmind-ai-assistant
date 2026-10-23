@@ -100,6 +100,10 @@ export default function App() {
             <strong>DEMODATA</strong> Svarene bygger på syntetiske data genereret til afprøvning – ikke rigtige MealMind-brugere.
           </div>
         )}
+        {health?.source_error && <div className="warn-banner" role="alert">{health.source_error}</div>}
+        {health?.read_only_check?.status === 'write_access' && (
+          <div className="warn-banner" role="alert">{health.read_only_check.message}</div>
+        )}
         {health && !health.llm_configured && (
           <div className="warn-banner" role="alert">
             AI-modellen er ikke konfigureret. Sæt <code>{health.provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'}</code> i <code>.env</code> og genstart backend.

@@ -32,7 +32,9 @@ FORBIDDEN_NODES = _types(
 )
 
 # Normaliserede funktionsnavne (små bogstaver). Prefixes dækker fx read_csv, read_parquet, read_text.
-FORBIDDEN_FUNCTION_PREFIXES = ("read_", "parquet_", "glob", "sniff_", "http_", "java_", "duckdb_")
+# ai_* (Databricks AI Functions) sender data til eksterne modeller og koster penge; vector_search ligeså.
+FORBIDDEN_FUNCTION_PREFIXES = ("read_", "parquet_", "glob", "sniff_", "http_", "java_", "duckdb_", "ai_",
+                               "vector_search", "try_reflect")
 FORBIDDEN_FUNCTIONS = {
     "getenv", "current_setting", "query", "query_table", "reflect", "java_method", "secret",
     "system", "shell", "load_extension", "pg_read_file", "input_file_name", "ai_query", "url_decode_file",

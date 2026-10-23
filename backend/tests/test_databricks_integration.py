@@ -245,6 +245,9 @@ INFO = {
 }
 
 
+GRANTS = {"privileges": ["USE_CATALOG", "USE_SCHEMA", "SELECT"], "owned": []}
+
+
 class FakeCursor:
     def __init__(self, log, fail=False):
         self.log, self.fail, self.rows, self.description = log, fail, [], []
@@ -260,12 +263,18 @@ class FakeCursor:
         if self.fail:
             raise RuntimeError("[INSUFFICIENT_PERMISSIONS] User does not have SELECT on table\nstacktrace")
         p = params or {}
-        if "information_schema.tables" in sql and "table_name =" not in sql:
+        if "_privileges" in sql:
+            self.rows = [(g,) for g in GRANTS["privileges"]]
+        elif "table_owner" in sql:
+            self.rows = list(GRANTS["owned"])
+        elif "information_schema.tables" in sql and "table_name =" not in sql:
             self.rows = [(t,) for t in sorted(INFO[p["s"]])]
         elif "information_schema.tables" in sql:
-            self.rows = [(INFO[p["s"]][p["t"]][0],)]
+            entry = INFO.get(p["s"], {}).get(p["t"])
+            self.rows = [(entry[0],)] if entry else []
         elif "information_schema.columns" in sql:
-            self.rows = list(INFO[p["s"]][p["t"]][1])
+            entry = INFO.get(p["s"], {}).get(p["t"])
+            self.rows = list(entry[1]) if entry else []
         elif "GROUP BY 1" in sql:
             self.rows = [("eaten", 5), ("skipped", 2)]
         elif "COUNT(*)" in sql and "information_schema" not in sql and "FROM `" in sql:
@@ -300,10 +309,14 @@ class FakeConnection:
 
 @pytest.fixture
 def fake_databricks(monkeypatch):
-    calls = {"connect": [], "sql": [], "fail": False}
+    calls = {"connect": [], "sql": [], "fail": False, "connect_error": None}
+    monkeypatch.setitem(GRANTS, "privileges", ["USE_CATALOG", "USE_SCHEMA", "SELECT"])
+    monkeypatch.setitem(GRANTS, "owned", [])
 
     def connect(**kwargs):
         calls["connect"].append(kwargs)
+        if calls["connect_error"]:
+            raise calls["connect_error"]
         return FakeConnection(calls["sql"], calls["fail"])
 
     from databricks import sql as dbsql
@@ -451,3 +464,90 @@ def test_model_serving_endpoint_tool(monkeypatch, executor):
     assert not out.is_error, out.content
     assert sent["url"].endswith("/serving-endpoints/mealmind-skip/invocations") and sent["auth"] == "Bearer dapi-test"
     assert json.loads(out.content)["results"][0]["preview"][1]["prediction"] == 0.7
+
+
+# ── Klar til rigtige data: fejlbeskeder, read-only-kontrol og demo-fallback ──
+
+
+def test_key_columns_are_not_sampled_for_the_ai(fake_databricks):
+    meal = next(t for t in DatabricksSource(db_settings()).tables() if t.short_name == "meal_events")
+    cols = {c.name: c for c in meal.columns}
+    assert cols["event_id"].sample_values == [] and cols["user_key"].sample_values == []
+    assert cols["status"].sample_values == ["eaten", "skipped"]
+    assert not any("GROUP BY 1" in sql and "`user_key`" in sql for sql, _ in fake_databricks["sql"])
+
+
+def test_configured_table_without_access_is_explained(fake_databricks):
+    src = DatabricksSource(db_settings(databricks_tables="mealmind.silver.meal_events,mealmind.silver.hemmelig"))
+    with pytest.raises(QueryError, match="mealmind.silver.hemmelig findes ikke eller er ikke synlige"):
+        src.tables()
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("[INSUFFICIENT_PERMISSIONS] User does not have SELECT on Table", "mangler rettigheder"),
+    ("[TABLE_OR_VIEW_NOT_FOUND] The table `x` cannot be found", "findes ikke"),
+    ("Error during request to server: 401 Unauthorized", "Godkendelse mod Databricks fejlede"),
+    ("HTTPSConnectionPool: Max retries exceeded (Name or service not known)", "kan ikke nås"),
+    ("[UNRESOLVED_COLUMN] A column with name `foo` cannot be resolved", "UNRESOLVED_COLUMN"),
+])
+def test_friendly_databricks_errors(raw, expected):
+    from app.data.sources import friendly_databricks_error
+
+    msg = friendly_databricks_error(RuntimeError(raw + "\n  at stacktrace"))
+    assert expected in msg and "stacktrace" not in msg
+
+
+def test_connection_error_at_startup_is_explained(fake_databricks):
+    fake_databricks["connect_error"] = RuntimeError("Max retries exceeded: Name or service not known")
+    with pytest.raises(RuntimeError, match="kan ikke nås"):
+        with TestClient(create_app(db_settings())):
+            pass
+
+
+def test_demo_fallback_for_development(fake_databricks, settings):
+    fake_databricks["connect_error"] = RuntimeError("401 Unauthorized")
+    cfg = db_settings(allow_demo_fallback=True, demo_db_path=settings.demo_db_path,
+                      frontend_dist=settings.frontend_dist)
+    with TestClient(create_app(cfg)) as c:
+        h = c.get("/api/health").json()
+        assert h["demo"] is True and h["data_source"] == "demo"
+        assert "Godkendelse mod Databricks fejlede" in h["source_error"] and "DEMODATA" in h["source_error"]
+        events = sse_events(c.post("/api/chat", json={"message": "Hvor mange måltider er der?"}))
+        assert events[0]["demo"] is True and events[-1]["type"] == "done"
+
+
+def test_read_only_identity_is_verified(fake_databricks):
+    with TestClient(create_app(db_settings())) as c:
+        assert c.get("/api/health").json()["read_only_check"]["status"] == "ok"
+
+
+@pytest.mark.parametrize("privileges,owned", [
+    (["SELECT", "MODIFY"], []),
+    (["ALL_PRIVILEGES"], []),
+    (["SELECT"], [("silver", "meal_events")]),
+])
+def test_identity_with_write_access_is_refused(fake_databricks, privileges, owned):
+    GRANTS["privileges"], GRANTS["owned"] = privileges, owned
+    with pytest.raises(RuntimeError, match="mere end læseadgang"):
+        with TestClient(create_app(db_settings())):
+            pass
+    with TestClient(create_app(db_settings(databricks_enforce_read_only=False))) as c:
+        assert c.get("/api/health").json()["read_only_check"]["status"] == "write_access"
+
+
+def test_decimal_results_become_numbers(fake_databricks, monkeypatch):
+    from decimal import Decimal
+
+    src = DatabricksSource(db_settings())
+    monkeypatch.setattr(FakeCursor, "fetchmany", lambda self, n: [("eaten", Decimal("5.5"))])
+    df = src.run(ValidatedQuery("SELECT status, n FROM x", ("x",)))
+    assert df["n"].dtype.kind == "f" and df["n"][0] == 5.5
+
+
+def test_ad_hoc_ml_on_demo_data_is_never_production_ready(executor):
+    executor.execute("run_sql", {"sql": "SELECT event_date, COUNT(*) AS n FROM meal_events GROUP BY 1", "title": "t"})
+    out = executor.execute("run_ml", {"function": "detect_anomalies", "params": {"result_id": "r1",
+                                                                                "value_column": "n"}})
+    summary = json.loads(out.content)["summary"]
+    assert summary["production_ready"] is False and "ikke produktionsklar" in summary["data_warning"]
+    assert out.events[0]["summary"]["data_origin"] == "syntetiske testdata"

@@ -60,6 +60,9 @@ så forklar begrænsningen i stedet for at gætte.
 - Findes tabellen ml_model_status, beskriver den modellerne trænet i Databricks (status og årsag). Brug dens \
 reason-kolonne til at forklare, hvorfor en model ikke er tilgængelig, og output-tabellerne (fx meal_similarity) \
 når en model er trænet.
+- ML-resultater fra run_ml er ad hoc-analyser på de hentede rækker, ikke produktionsmodeller. Kald kun en model \
+produktionsklar, hvis ml_model_status siger production_ready = true. Står der data_warning i et resultat, så \
+gentag advarslen.
 - Kolonner med is_current: filtrér normalt på is_current = true (false = slettet/erstattet i appen siden).
 - Svar aldrig om madspild, køb eller andre forhold, som ingen tabel registrerer - sig at data mangler.
 

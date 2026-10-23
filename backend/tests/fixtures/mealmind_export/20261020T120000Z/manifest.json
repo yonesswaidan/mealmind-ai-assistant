@@ -1,0 +1,426 @@
+{
+  "batch_id": "20261020T120000Z",
+  "snapshot_at": "2026-10-20T12:00:00+00:00",
+  "extract_mode": "full",
+  "contract_version": "1.0.0",
+  "source_kind": "sqlite",
+  "contains_synthetic_data": true,
+  "label": "Testfixture fra biteowl/data-platform (syntetisk)",
+  "pseudonymization": {
+    "method": "HMAC-SHA256",
+    "key_fingerprint": "dc4acf121aa2"
+  },
+  "missing_source_tables": [],
+  "missing_source_columns": {},
+  "quality_ok": true,
+  "datasets": {
+    "meal_events": {
+      "file": "meal_events.parquet",
+      "rows": 10,
+      "key": "event_id",
+      "description": "Måltidshændelser fra MealMind: én række pr. planlagt måltid i madplanen (calendar_days) og pr. manuelt registreret måltid (food_log, undtagen kalender-kopier). Brugere er pseudonymiseret. Der findes ingen historik over ændringer i appen; silver-tabellen viser seneste version.",
+      "columns": [
+        {
+          "name": "event_id",
+          "type": "string",
+          "nullable": false,
+          "description": "Stabil pseudonym nøgle for hændelsen (HMAC af kilde-id)."
+        },
+        {
+          "name": "user_key",
+          "type": "string",
+          "nullable": false,
+          "description": "Pseudonym bruger-id (HMAC-SHA256). Kan ikke føres tilbage uden nøglen."
+        },
+        {
+          "name": "event_date",
+          "type": "date",
+          "nullable": false,
+          "description": "Dato for måltidet."
+        },
+        {
+          "name": "meal_slot",
+          "type": "string",
+          "nullable": false,
+          "description": "Måltidstype."
+        },
+        {
+          "name": "event_source",
+          "type": "string",
+          "nullable": false,
+          "description": "meal_plan = planlagt i madplanen; food_log = manuelt/stregkode-registreret i madloggen."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "nullable": false,
+          "description": "planned/eaten/skipped for madplan-måltider (brugerens markering); logged for madlog."
+        },
+        {
+          "name": "meal_name",
+          "type": "string",
+          "nullable": true,
+          "description": "Rettens navn (fritekst renset for e-mail/telefonnumre)."
+        },
+        {
+          "name": "calories_kcal",
+          "type": "double",
+          "nullable": true,
+          "description": "Kalorier pr. portion (se nutrition_basis)."
+        },
+        {
+          "name": "protein_g",
+          "type": "double",
+          "nullable": true,
+          "description": "Protein i gram pr. portion."
+        },
+        {
+          "name": "carbs_g",
+          "type": "double",
+          "nullable": true,
+          "description": "Kulhydrat i gram pr. portion."
+        },
+        {
+          "name": "fat_g",
+          "type": "double",
+          "nullable": true,
+          "description": "Fedt i gram pr. portion."
+        },
+        {
+          "name": "fiber_g",
+          "type": "double",
+          "nullable": true,
+          "description": "Kostfibre i gram pr. portion (kun fra beregnede opskrifter)."
+        },
+        {
+          "name": "nutrition_basis",
+          "type": "string",
+          "nullable": false,
+          "description": "recipe = beregnet fra opskriftens ingredienser; day_plan_estimate = dagens AI-estimat delt ligeligt på hovedmåltider (samme logik som appen); logged = brugerens egne tal; none = ingen næringsdata."
+        },
+        {
+          "name": "servings",
+          "type": "int",
+          "nullable": true,
+          "description": "Antal portioner i opskriften."
+        },
+        {
+          "name": "prep_time_min",
+          "type": "int",
+          "nullable": true,
+          "description": "Forberedelsestid i minutter."
+        },
+        {
+          "name": "cook_time_min",
+          "type": "int",
+          "nullable": true,
+          "description": "Tilberedningstid i minutter."
+        },
+        {
+          "name": "ingredient_count",
+          "type": "int",
+          "nullable": true,
+          "description": "Antal ingredienser i opskriften."
+        },
+        {
+          "name": "recipe_price_dkk",
+          "type": "double",
+          "nullable": true,
+          "description": "Opskriftens estimerede pris i DKK."
+        },
+        {
+          "name": "day_plan_cost_dkk",
+          "type": "double",
+          "nullable": true,
+          "description": "Hele dagens estimerede madplanspris i DKK (gentages på dagens måltider - summér ikke pr. måltid)."
+        },
+        {
+          "name": "recipe_origin",
+          "type": "string",
+          "nullable": true,
+          "description": "Opskriftens oprindelse i appen (fx ai)."
+        },
+        {
+          "name": "recipe_ai_generated",
+          "type": "boolean",
+          "nullable": true,
+          "description": "Om opskriften er AI-genereret."
+        },
+        {
+          "name": "log_source",
+          "type": "string",
+          "nullable": true,
+          "description": "Madlogkilde (manual, barcode, ...). Tom for madplan-måltider."
+        },
+        {
+          "name": "is_favorite",
+          "type": "boolean",
+          "nullable": false,
+          "description": "Om brugeren har retten som favorit."
+        },
+        {
+          "name": "rating",
+          "type": "int",
+          "nullable": true,
+          "description": "Brugerens seneste vurdering 1-5 af retten (meal_ratings)."
+        },
+        {
+          "name": "source_created_at",
+          "type": "timestamp",
+          "nullable": true,
+          "description": "Hvornår rækken blev oprettet i appen (madlog) eller dagens plan blev genereret (madplan)."
+        },
+        {
+          "name": "snapshot_at",
+          "type": "timestamp",
+          "nullable": false,
+          "description": "Tidspunkt for dataudtrækket."
+        }
+      ],
+      "quality": {
+        "dataset": "meal_events",
+        "rows": 10,
+        "errors": [],
+        "warnings": [],
+        "null_share": {
+          "event_id": 0.0,
+          "user_key": 0.0,
+          "event_date": 0.0,
+          "meal_slot": 0.0,
+          "event_source": 0.0,
+          "status": 0.0,
+          "meal_name": 0.0,
+          "calories_kcal": 0.2,
+          "protein_g": 0.2,
+          "carbs_g": 0.2,
+          "fat_g": 0.2,
+          "fiber_g": 0.9,
+          "nutrition_basis": 0.0,
+          "servings": 0.9,
+          "prep_time_min": 0.9,
+          "cook_time_min": 0.9,
+          "ingredient_count": 0.9,
+          "recipe_price_dkk": 0.9,
+          "day_plan_cost_dkk": 0.4,
+          "recipe_origin": 0.9,
+          "recipe_ai_generated": 0.9,
+          "log_source": 0.7,
+          "is_favorite": 0.0,
+          "rating": 0.9,
+          "source_created_at": 0.0,
+          "snapshot_at": 0.0
+        },
+        "distinct_users": 2,
+        "ok": true
+      },
+      "transform": {
+        "source_rows": {
+          "calendar_days": 4,
+          "food_log": 4
+        },
+        "output_rows": 10,
+        "dropped_duplicates": 0,
+        "invalid_rows": {
+          "calendar_days: ugyldig dato eller bruger": 1
+        },
+        "excluded_rows": {
+          "food_log: kalender-kopier": 1
+        }
+      },
+      "sha256": "7918c0762642452b35a7efb76ba19a0bcf2adb0dd2251f9e185b7d066c69042a"
+    },
+    "shopping_food_items": {
+      "file": "shopping_food_items.parquet",
+      "rows": 6,
+      "key": "record_id",
+      "description": "Indkøbs- og madvaredata fra MealMind: varer på ugentlige indkøbslister (calendar_shopping_items) og varer i brugerens køkkenskab (pantry_items) med udløbsdato. Brugere er pseudonymiseret. MealMind registrerer IKKE madspild, køb eller kvitteringer: udløbne varer er en risikoindikator, ikke spild.",
+      "columns": [
+        {
+          "name": "record_id",
+          "type": "string",
+          "nullable": false,
+          "description": "Stabil pseudonym nøgle for varen."
+        },
+        {
+          "name": "user_key",
+          "type": "string",
+          "nullable": false,
+          "description": "Pseudonym bruger-id (samme nøgle som i meal_events)."
+        },
+        {
+          "name": "record_type",
+          "type": "string",
+          "nullable": false,
+          "description": "shopping_list_item = vare på indkøbsliste; pantry_item = vare i køkkenskabet."
+        },
+        {
+          "name": "item_name",
+          "type": "string",
+          "nullable": false,
+          "description": "Varenavn (normaliseret til små bogstaver)."
+        },
+        {
+          "name": "product_name",
+          "type": "string",
+          "nullable": true,
+          "description": "Matchet butiksprodukt for indkøbslistevaren."
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": true,
+          "description": "Varekategori fra appen (fx dairy, vegetables, other)."
+        },
+        {
+          "name": "quantity_text",
+          "type": "string",
+          "nullable": true,
+          "description": "Mængde som registreret i appen (tekst)."
+        },
+        {
+          "name": "quantity_value",
+          "type": "double",
+          "nullable": true,
+          "description": "Mængde som tal, når teksten kan fortolkes."
+        },
+        {
+          "name": "unit",
+          "type": "string",
+          "nullable": true,
+          "description": "Enhed (g, ml, stk, ...)."
+        },
+        {
+          "name": "estimated_price_dkk",
+          "type": "double",
+          "nullable": true,
+          "description": "Appens estimerede pris i DKK."
+        },
+        {
+          "name": "offer_price_dkk",
+          "type": "double",
+          "nullable": true,
+          "description": "Live-/tilbudspris fundet hos en butik i DKK."
+        },
+        {
+          "name": "offer_store",
+          "type": "string",
+          "nullable": true,
+          "description": "Butikken bag live-/tilbudsprisen."
+        },
+        {
+          "name": "checked",
+          "type": "boolean",
+          "nullable": true,
+          "description": "Afkrydset på indkøbslisten (ikke nødvendigvis købt)."
+        },
+        {
+          "name": "week_start",
+          "type": "date",
+          "nullable": true,
+          "description": "Indkøbslistens uge (mandag)."
+        },
+        {
+          "name": "list_generated_at",
+          "type": "timestamp",
+          "nullable": true,
+          "description": "Hvornår indkøbslisten blev genereret."
+        },
+        {
+          "name": "added_at",
+          "type": "timestamp",
+          "nullable": true,
+          "description": "Hvornår varen blev lagt i køkkenskabet."
+        },
+        {
+          "name": "expiry_date",
+          "type": "date",
+          "nullable": true,
+          "description": "Udløbsdato angivet af brugeren (køkkenskab)."
+        },
+        {
+          "name": "days_to_expiry",
+          "type": "int",
+          "nullable": true,
+          "description": "Dage fra udtræksdato til udløb (negativ = udløbet)."
+        },
+        {
+          "name": "expiry_status",
+          "type": "string",
+          "nullable": false,
+          "description": "expired / expires_within_7d / ok / no_expiry_date for køkkenskab; not_applicable for indkøbslister. Beregnet på udtræksdatoen."
+        },
+        {
+          "name": "reference_price_dkk",
+          "type": "double",
+          "nullable": true,
+          "description": "Referencepris fra appens ingredienstabel."
+        },
+        {
+          "name": "reference_category",
+          "type": "string",
+          "nullable": true,
+          "description": "Kategori fra appens ingredienstabel."
+        },
+        {
+          "name": "preferred_store_chain",
+          "type": "string",
+          "nullable": true,
+          "description": "Brugerens foretrukne butikskæde (ikke adresse)."
+        },
+        {
+          "name": "snapshot_at",
+          "type": "timestamp",
+          "nullable": false,
+          "description": "Tidspunkt for dataudtrækket."
+        }
+      ],
+      "quality": {
+        "dataset": "shopping_food_items",
+        "rows": 6,
+        "errors": [],
+        "warnings": [],
+        "null_share": {
+          "record_id": 0.0,
+          "user_key": 0.0,
+          "record_type": 0.0,
+          "item_name": 0.0,
+          "product_name": 1.0,
+          "category": 0.6667,
+          "quantity_text": 0.0,
+          "quantity_value": 0.0,
+          "unit": 0.0,
+          "estimated_price_dkk": 0.6667,
+          "offer_price_dkk": 1.0,
+          "offer_store": 1.0,
+          "checked": 0.6667,
+          "week_start": 0.6667,
+          "list_generated_at": 0.6667,
+          "added_at": 0.3333,
+          "expiry_date": 0.5,
+          "days_to_expiry": 0.5,
+          "expiry_status": 0.0,
+          "reference_price_dkk": 0.0,
+          "reference_category": 0.0,
+          "preferred_store_chain": 0.1667,
+          "snapshot_at": 0.0
+        },
+        "distinct_users": 2,
+        "ok": true
+      },
+      "transform": {
+        "source_rows": {
+          "calendar_shopping_items": 4,
+          "calendar_shopping_lists": 1,
+          "pantry_items": 4
+        },
+        "output_rows": 6,
+        "dropped_duplicates": 1,
+        "invalid_rows": {
+          "calendar_shopping_items: mangler indkøbsliste": 1
+        },
+        "excluded_rows": {}
+      },
+      "sha256": "141ab6aa61e2d9328444cb10e785cc76f498d09508961394d975b03bd27b0f5a"
+    }
+  }
+}

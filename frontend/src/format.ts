@@ -22,3 +22,9 @@ export function toCsv(columns: string[], rows: Record<string, Cell>[]): string {
   }
   return [columns.map(esc).join(','), ...rows.map((r) => columns.map((c) => esc(r[c])).join(','))].join('\n')
 }
+
+/** Mærkat for datakilden. Syntetiske data (demo eller testkatalog) vises aldrig som rigtige data. */
+export function sourceBadge(health: { demo: boolean; data_source: string }): string {
+  if (health.demo) return health.data_source === 'demo' ? 'DEMODATA' : 'TESTDATA'
+  return health.data_source === 'databricks' ? 'Databricks' : 'Udtræk'
+}

@@ -1,3 +1,4 @@
+import { sourceBadge } from '../format'
 import type { DatasetsResponse, Health } from '../types'
 
 interface Props {
@@ -10,6 +11,11 @@ interface Props {
 
 const nf = new Intl.NumberFormat('da-DK')
 const PROVIDER_NAMES = { openai: 'OpenAI', anthropic: 'Anthropic' } as const
+const SOURCE_NAMES: Record<string, string> = {
+  demo: 'Lokal DuckDB',
+  local_export: 'Lokalt udtræk',
+  databricks: 'SQL Warehouse',
+}
 
 export function Sidebar({ health, datasets, onNewChat, open, onClose }: Props) {
   return (
@@ -32,9 +38,9 @@ export function Sidebar({ health, datasets, onNewChat, open, onClose }: Props) {
         {health ? (
           <div className="source-line">
             <span className={`badge ${health.demo ? 'badge-demo' : 'badge-live'}`}>
-              {health.demo ? 'DEMODATA' : 'Databricks'}
+              {sourceBadge(health)}
             </span>
-            <span className="muted">{health.demo ? 'Lokal DuckDB' : 'SQL Warehouse'}</span>
+            <span className="muted">{health.data_label ?? SOURCE_NAMES[health.data_source] ?? health.data_source}</span>
           </div>
         ) : (
           <div className="muted">Henter…</div>
@@ -52,7 +58,7 @@ export function Sidebar({ health, datasets, onNewChat, open, onClose }: Props) {
             {t.description && <p className="dataset-desc">{t.description}</p>}
             <ul className="columns">
               {t.columns.map((c) => (
-                <li key={c.name} title={c.sample_values.join(', ')}>
+                <li key={c.name} title={[c.description, c.sample_values.join(', ')].filter(Boolean).join(' · ')}>
                   <code>{c.name}</code>
                   <span className="muted">{c.type.toLowerCase()}</span>
                 </li>

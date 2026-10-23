@@ -1,5 +1,8 @@
-"""Read-only datakilder: lokal DuckDB (demodata) og Azure Databricks SQL Warehouse."""
+"""Read-only datakilder: lokal DuckDB (demodata), lokalt MealMind-udtræk og Azure Databricks SQL Warehouse."""
 
+import hashlib
+import json
+import re
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -9,6 +12,7 @@ import duckdb
 import pandas as pd
 
 from app.config import Settings
+from app.data.databricks_auth import auth_mode, sql_connect_kwargs
 from app.security.sql_guard import ValidatedQuery
 
 
@@ -40,18 +44,23 @@ class DataSource(Protocol):
     kind: str
     dialect: str
     is_demo: bool
+    label: str
 
     def tables(self) -> list[TableInfo]: ...
     def run(self, query: ValidatedQuery) -> pd.DataFrame: ...
 
 
 CATEGORICAL_TYPES = ("VARCHAR", "STRING", "BOOLEAN")
+# Tabelkommentarer med disse præfikser markerer syntetiske data (sættes af demo-generatoren og Databricks-pipelinen).
+SYNTHETIC_PREFIXES = ("DEMODATA", "SYNTETISKE TESTDATA")
+_IDENT = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]*$")
 
 
 class DuckDBSource:
     kind = "demo"
     dialect = "duckdb"
     is_demo = True
+    label = "DEMODATA (syntetiske)"
 
     def __init__(self, path: Path, timeout_seconds: float):
         self.path = path
@@ -76,18 +85,18 @@ class DuckDBSource:
                 ).fetchall()
                 for name, comment in rows:
                     cols = con.execute(
-                        "SELECT column_name, data_type FROM information_schema.columns "
-                        "WHERE table_name = ? ORDER BY ordinal_position", [name]
+                        "SELECT column_name, data_type, comment FROM duckdb_columns() "
+                        "WHERE schema_name = 'main' AND table_name = ? ORDER BY column_index", [name]
                     ).fetchall()
                     count = con.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]
                     columns = []
-                    for col, typ in cols:
+                    for col, typ, col_comment in cols:
                         samples: list[str] = []
                         if typ.upper().startswith(CATEGORICAL_TYPES):
                             samples = [str(r[0]) for r in con.execute(
                                 f'SELECT "{col}", COUNT(*) c FROM "{name}" GROUP BY 1 ORDER BY c DESC LIMIT 12'
                             ).fetchall()]
-                        columns.append(ColumnInfo(col, typ, sample_values=samples))
+                        columns.append(ColumnInfo(col, typ, col_comment or "", sample_values=samples))
                     infos.append(TableInfo(name, comment or "", columns, count))
                 self._tables = infos
             finally:
@@ -112,15 +121,26 @@ class DuckDBSource:
 class DatabricksSource:
     kind = "databricks"
     dialect = "databricks"
-    is_demo = False
+    label = "Azure Databricks"
 
     def __init__(self, settings: Settings):
-        if not (settings.databricks_server_hostname and settings.databricks_http_path and settings.databricks_token):
-            raise ValueError("DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH og DATABRICKS_TOKEN skal være sat.")
+        if not (settings.databricks_server_hostname and settings.databricks_http_path):
+            raise ValueError("DATABRICKS_SERVER_HOSTNAME og DATABRICKS_HTTP_PATH skal være sat.")
+        auth_mode(settings)  # fejler med en forklaring, hvis hverken service principal eller token er sat
         if not settings.databricks_table_list:
-            raise ValueError("DATABRICKS_TABLES skal angive mindst én fuldt kvalificeret tabel (catalog.schema.table).")
+            raise ValueError("DATABRICKS_TABLES skal angive mindst én tabel (catalog.schema.table eller catalog.schema.*).")
+        for entry in settings.databricks_table_list:
+            parts = entry.split(".")
+            if len(parts) != 3 or not all(_IDENT.match(p) for p in parts[:2]) or not (
+                    parts[2] == "*" or _IDENT.match(parts[2])):
+                raise ValueError(f"Ugyldigt tabelnavn i DATABRICKS_TABLES: '{entry}' (forventede catalog.schema.table).")
         self.settings = settings
         self._tables: list[TableInfo] | None = None
+
+    @property
+    def is_demo(self) -> bool:
+        # Rigtige data, medmindre tabellerne selv er markeret som syntetiske (fx et testkatalog).
+        return any(t.description.upper().startswith(SYNTHETIC_PREFIXES) for t in self.tables())
 
     def _connect(self):
         from databricks import sql
@@ -128,15 +148,29 @@ class DatabricksSource:
         return sql.connect(
             server_hostname=self.settings.databricks_server_hostname,
             http_path=self.settings.databricks_http_path,
-            access_token=self.settings.databricks_token,
             session_configuration={"STATEMENT_TIMEOUT": str(int(self.settings.sql_timeout_seconds))},
+            **sql_connect_kwargs(self.settings),
         )
+
+    def _expand(self, cur) -> list[str]:
+        """Udvider 'catalog.schema.*' til konkrete tabeller; tabeller der starter med '_' er interne."""
+        out: list[str] = []
+        for entry in self.settings.databricks_table_list:
+            catalog, schema, table = entry.split(".")
+            if table != "*":
+                out.append(entry)
+                continue
+            cur.execute(f"SELECT table_name FROM `{catalog}`.information_schema.tables "
+                        "WHERE table_schema = :s ORDER BY table_name", {"s": schema})
+            out += [f"{catalog}.{schema}.{r[0]}" for r in cur.fetchall()
+                    if not r[0].startswith("_") and _IDENT.match(r[0])]
+        return list(dict.fromkeys(out))
 
     def tables(self) -> list[TableInfo]:
         if self._tables is None:
             infos = []
             with self._connect() as con, con.cursor() as cur:
-                for fq in self.settings.databricks_table_list:
+                for fq in self._expand(cur):
                     catalog, schema, table = fq.split(".")
                     cur.execute(
                         f"SELECT comment FROM `{catalog}`.information_schema.tables "
@@ -159,6 +193,9 @@ class DatabricksSource:
                     cur.execute(f"SELECT COUNT(*) FROM `{catalog}`.`{schema}`.`{table}`")
                     count = cur.fetchone()[0]
                     infos.append(TableInfo(fq, (row[0] if row else "") or "", cols, count))
+            if not infos:
+                raise QueryError("Ingen tabeller fundet ud fra DATABRICKS_TABLES. Er pipelinen kørt, og har "
+                                 "identiteten USE SCHEMA/SELECT-rettigheder?")
             self._tables = infos
         return self._tables
 
@@ -173,9 +210,97 @@ class DatabricksSource:
             raise QueryError(str(e).splitlines()[0]) from e
 
 
+_TABLE_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _sql_literal(text: str) -> str:
+    return "'" + text.replace("'", "''") + "'"
+
+
+def resolve_export_batch(path: Path) -> Path:
+    """En udtræksmappe eller en mappe med flere udtræk (det nyeste batch_id vælges)."""
+    path = Path(path)
+    if (path / "manifest.json").is_file():
+        return path
+    batches = sorted(p for p in path.iterdir() if p.is_dir() and (p / "manifest.json").is_file()) \
+        if path.is_dir() else []
+    if not batches:
+        raise ValueError(f"Intet MealMind-udtræk (manifest.json) fundet i {path}.")
+    return batches[-1]
+
+
+def load_export_manifest(batch: Path) -> dict:
+    manifest = json.loads((batch / "manifest.json").read_text())
+    if not manifest.get("quality_ok"):
+        raise ValueError("Udtrækket er markeret med fejl i datakvaliteten og bruges ikke.")
+    for name, info in manifest.get("datasets", {}).items():
+        if not _TABLE_NAME.match(name):
+            raise ValueError(f"Ugyldigt datasætnavn i manifestet: {name}")
+        file = batch / info["file"]
+        if file.parent.resolve() != batch.resolve() or not file.is_file():
+            raise ValueError(f"Filen {info['file']} mangler i udtrækket.")
+        if _sha256(file) != info.get("sha256"):
+            raise ValueError(f"Checksum for {info['file']} passer ikke med manifestet - filen er ændret.")
+    return manifest
+
+
+class LocalExportSource(DuckDBSource):
+    """Et godkendt, pseudonymiseret MealMind-udtræk (fra biteowl/data-platform) indlæst i en read-only DuckDB.
+
+    Bruges til at analysere rigtige data, før Azure Databricks er sat op, eller offline.
+    """
+
+    kind = "local_export"
+
+    def __init__(self, export_dir: Path, cache_dir: Path, timeout_seconds: float):
+        batch = resolve_export_batch(export_dir)
+        self.manifest = load_export_manifest(batch)
+        self.is_demo = bool(self.manifest.get("contains_synthetic_data"))
+        self.label = "Syntetisk testudtræk" if self.is_demo else f"Lokalt MealMind-udtræk {self.manifest['batch_id']}"
+        digest = hashlib.sha256(json.dumps(self.manifest, sort_keys=True).encode()).hexdigest()[:12]
+        db_path = Path(cache_dir) / f"export_{self.manifest['batch_id']}_{digest}.duckdb"
+        if not db_path.exists():
+            self._build(batch, db_path)
+        super().__init__(db_path, timeout_seconds)
+
+    def _build(self, batch: Path, db_path: Path) -> None:
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = db_path.with_suffix(".tmp")
+        tmp.unlink(missing_ok=True)
+        prefix = ("SYNTETISKE TESTDATA - ikke rigtige brugere. " if self.is_demo else
+                  f"MealMind-udtræk {self.manifest['batch_id']} (pseudonymiseret, kun læseadgang). ")
+        con = duckdb.connect(str(tmp))
+        try:
+            for name, info in self.manifest["datasets"].items():
+                path = str((batch / info["file"]).resolve())
+                con.execute(f'CREATE TABLE "{name}" AS SELECT * FROM read_parquet({_sql_literal(path)})')
+                con.execute(f'COMMENT ON TABLE "{name}" IS {_sql_literal(prefix + info.get("description", ""))}')
+                existing = {r[0] for r in con.execute(f'DESCRIBE "{name}"').fetchall()}
+                for col in info.get("columns", []):
+                    if col["name"] in existing and col.get("description"):
+                        con.execute(f'COMMENT ON COLUMN "{name}"."{col["name"]}" IS '
+                                    f'{_sql_literal(col["description"])}')
+        finally:
+            con.close()
+        tmp.replace(db_path)
+
+
 def create_source(settings: Settings) -> DataSource:
     if settings.data_source == "databricks":
         return DatabricksSource(settings)
+    if settings.data_source == "local_export":
+        if not settings.local_export_dir:
+            raise ValueError("LOCAL_EXPORT_DIR skal pege på et MealMind-udtræk, når DATA_SOURCE=local_export.")
+        return LocalExportSource(settings.local_export_dir, settings.demo_db_path.parent / "export_cache",
+                                 settings.sql_timeout_seconds)
     from app.data.demo_data import ensure_demo_db
 
     ensure_demo_db(settings.demo_db_path)

@@ -12,6 +12,7 @@ from app.agent.agent import AgentDeps, ChatRequest, HistoryMessage, run_agent
 from app.agent.llm import AnthropicLLM, create_llm
 from app.agent.openai_llm import OpenAILLM, to_openai_input, to_openai_tools
 from app.agent.prompts import build_system_prompt
+from app.agent.router import plan_question
 from app.main import create_app
 from app.tools.ml import build_registry
 from app.tools.registry import tool_definitions
@@ -188,7 +189,8 @@ async def test_full_agent_conversation_with_sql_ml_chart_and_history(fake_openai
     # Samtalehistorikken sendes med som almindelige beskeder før det nye spørgsmål.
     assert first == [{"role": "user", "content": "Hvor mange brugere er der?"},
                      {"role": "assistant", "content": "Der er 500 brugere (demodata)."},
-                     {"role": "user", "content": "Hvordan udvikler aktiviteten sig?"}]
+                     {"role": "user", "content": "Hvordan udvikler aktiviteten sig?\n\n"
+                                                 + plan_question("Hvordan udvikler aktiviteten sig?").hint()}]
     # Reasoning og function_call sendes retur sammen med værktøjsresultatet for samme call_id.
     assert second[3]["type"] == "reasoning" and second[3]["encrypted_content"] == "enc-1"
     assert second[4]["type"] == "function_call" and second[4]["call_id"] == "call_sql"

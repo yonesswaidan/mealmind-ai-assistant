@@ -77,6 +77,7 @@ class ToolExecutor:
         self.source = source
         self.ml_registry = ml_registry
         self.store = ResultStore()
+        self.ml_calls = 0
 
     def execute(self, name: str, args: dict) -> ToolOutcome:
         if not isinstance(args, dict):
@@ -125,6 +126,10 @@ class ToolExecutor:
         function, params = args.get("function"), args.get("params")
         if not isinstance(function, str) or not isinstance(params, dict):
             raise ToolError("run_ml kræver 'function' (tekst) og 'params' (objekt).")
+        if self.ml_calls >= self.settings.ml_max_calls_per_question:
+            raise ToolError(f"Grænsen på {self.settings.ml_max_calls_per_question} ML-kørsler pr. spørgsmål er nået. "
+                            "Brug de resultater, der allerede er beregnet.")
+        self.ml_calls += 1
         results, summary = run_ml(self.ml_registry, self.store, function, params)
         info = {"function": function, "summary": summary,
                 "results": [describe_result(r, min(self.settings.preview_rows, 15)) for r in results]}

@@ -6,6 +6,7 @@ Bruges aldrig i normal drift; svaret markeres tydeligt med [Testtilstand].
 import json
 
 from app.agent.llm import TextCallback, ToolUse, Turn
+from app.agent.router import plan_question
 from app.data.sources import DataSource
 
 
@@ -22,6 +23,10 @@ class ScriptedLLM:
         results = [b for m in messages if m["role"] == "user" and isinstance(m["content"], list)
                    for b in m["content"] if b.get("type") == "tool_result"]
         n = len(results)
+        question = next(m["content"] for m in reversed(messages)
+                        if m["role"] == "user" and isinstance(m["content"], str)).split("\n\n[Systemhint")[0]
+        if "forecast_timeseries" in plan_question(question).ml_functions:
+            return await self._forecast_flow(results, on_text)
         if n == 0:
             return self._tool("run_sql", {
                 "sql": f"SELECT date_trunc('month', {self.date_col}) AS month, COUNT(*) AS rows "
@@ -42,6 +47,30 @@ class ScriptedLLM:
                 f"{sql_result['row_count']} måneder (demodata).")
         for i in range(0, len(text), 20):
             await on_text(text[i:i + 20])
+        return Turn(content=[{"type": "text", "text": text}], stop_reason="end_turn", tool_uses=[])
+
+    async def _forecast_flow(self, results: list[dict], on_text: TextCallback) -> Turn:
+        """Prognose-spørgsmål: SQL → ML-prognose → graf → forklaring ud fra de beregnede tal."""
+        n = len(results)
+        if n == 0:
+            return self._tool("run_sql", {
+                "sql": f"SELECT date_trunc('week', {self.date_col}) AS week, COUNT(*) AS rows "
+                       f"FROM {self.table} GROUP BY 1 ORDER BY 1",
+                "title": "Rækker pr. uge",
+            }, n)
+        if n == 1:
+            rid = json.loads(results[0]["content"])["result_id"]
+            return self._tool("run_ml", {"function": "forecast_timeseries", "params": {
+                "result_id": rid, "date_column": "week", "value_column": "rows", "freq": "W", "horizon": 4}}, n)
+        ml = json.loads(results[1]["content"])
+        if n == 2:
+            return self._tool("create_chart", {
+                "result_id": ml["results"][0]["result_id"], "chart_type": "line", "x": "period",
+                "y": ["actual", "forecast"], "title": "Prognose pr. uge"}, n)
+        s = ml["summary"]
+        text = (f"[Testtilstand] Prognosen for næste uge er {s['next_period_forecast']:.0f} rækker "
+                f"(model: {s['model']}, backtest MAE {s['backtest_mae']:.1f}).")
+        await on_text(text)
         return Turn(content=[{"type": "text", "text": text}], stop_reason="end_turn", tool_uses=[])
 
     def _tool(self, name: str, args: dict, n: int) -> Turn:

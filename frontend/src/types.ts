@@ -24,6 +24,8 @@ export interface TableSpec {
 
 export type AgentEvent =
   | { type: 'start'; demo: boolean; data_source: string }
+  | { type: 'plan'; capabilities: string[]; labels: string[]; tools: string[]; ml_functions: string[]; notes: string[] }
+  | { type: 'notice'; level: 'warning' | 'info'; message: string }
   | { type: 'text_delta'; text: string }
   | { type: 'text_break' }
   | { type: 'step'; id: string; tool: string; input: unknown }
@@ -63,6 +65,8 @@ export interface AssistantMessage {
   status: 'streaming' | 'done' | 'error'
   error?: string
   demo?: boolean
+  plan?: string[]
+  notices?: string[]
 }
 
 export type Message = UserMessage | AssistantMessage
@@ -70,6 +74,7 @@ export type Message = UserMessage | AssistantMessage
 export interface DatasetColumn {
   name: string
   type: string
+  description?: string
   sample_values: string[]
 }
 
@@ -83,6 +88,7 @@ export interface Dataset {
 export interface DatasetsResponse {
   demo: boolean
   data_source: string
+  data_label?: string
   tables: Dataset[]
   ml_functions: { name: string; description: string }[]
 }
@@ -90,6 +96,7 @@ export interface DatasetsResponse {
 export interface Health {
   status: string
   data_source: string
+  data_label?: string
   demo: boolean
   llm_configured: boolean
   provider: 'openai' | 'anthropic' | 'test'

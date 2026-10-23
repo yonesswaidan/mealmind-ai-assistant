@@ -85,6 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "status": "ok",
             "data_source": deps.source.kind,
+            "data_label": deps.source.label,
             "demo": deps.source.is_demo,
             "llm_configured": settings.assistant_test_mode or credentials_available(settings),
             "provider": "test" if settings.assistant_test_mode else settings.ai_provider,
@@ -99,9 +100,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "demo": deps.source.is_demo,
             "data_source": deps.source.kind,
+            "data_label": deps.source.label,
             "tables": [{
                 "name": t.name, "description": t.description, "row_count": t.row_count,
-                "columns": [{"name": c.name, "type": c.type, "sample_values": c.sample_values[:6]} for c in t.columns],
+                "columns": [{"name": c.name, "type": c.type, "description": c.description,
+                             "sample_values": c.sample_values[:6]} for c in t.columns],
             } for t in deps.source.tables()],
             "ml_functions": [{"name": f.name, "description": f.description} for f in deps.ml_registry.values()],
         }

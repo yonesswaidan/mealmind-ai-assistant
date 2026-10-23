@@ -6,3 +6,6 @@
 **/.pytest_cache
 frontend/dist
 backend/data/*.duckdb
+backend/data/export_cache
+exports
+**/*.parquet

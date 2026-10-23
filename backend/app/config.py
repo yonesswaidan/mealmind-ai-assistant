@@ -11,14 +11,21 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=BACKEND_DIR.parent / ".env", extra="ignore")
 
-    # "demo" bruger lokal DuckDB med genererede demodata; "databricks" bruger et SQL Warehouse.
-    data_source: Literal["demo", "databricks"] = "demo"
+    # "demo" bruger lokal DuckDB med genererede demodata; "databricks" bruger et SQL Warehouse;
+    # "local_export" bruger et godkendt, pseudonymiseret MealMind-udtræk (Parquet + manifest.json) lokalt.
+    data_source: Literal["demo", "databricks", "local_export"] = "demo"
     demo_db_path: Path = BACKEND_DIR / "data" / "demo.duckdb"
+    # Mappe med ét udtræk (<batch_id>/) eller en mappe med flere udtræk (det nyeste bruges).
+    local_export_dir: Path | None = None
 
     databricks_server_hostname: str = ""
     databricks_http_path: str = ""
     databricks_token: str = ""
-    # Kommasepareret liste af fuldt kvalificerede tabeller, fx "main.mealmind.meal_events,main.mealmind.pantry_items".
+    # OAuth M2M med service principal (anbefalet frem for token). Bruges når begge er sat.
+    databricks_client_id: str = ""
+    databricks_client_secret: str = ""
+    # Kommasepareret liste af tabeller (catalog.schema.table). "catalog.schema.*" tager alle tabeller i skemaet,
+    # fx "mealmind.silver.*,mealmind.gold.*". Tabeller hvis navn starter med "_" udelades.
     databricks_tables: str = ""
     # JSON-objekt: {"navn": {"endpoint": "...", "description": "..."}} for Databricks Model Serving-endpoints.
     databricks_ml_endpoints: str = ""
@@ -34,6 +41,8 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-opus-5-5"
     anthropic_effort: Literal["low", "medium", "high", "xhigh", "max"] = "medium"
     agent_max_steps: int = 12
+    # Højst så mange ML-kørsler pr. spørgsmål, så modellen ikke træner ukontrolleret.
+    ml_max_calls_per_question: int = 4
 
     sql_row_limit: int = 50_000
     sql_timeout_seconds: float = 20.0

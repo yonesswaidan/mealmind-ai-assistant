@@ -9,6 +9,10 @@ export function applyEvent(msg: AssistantMessage, ev: AgentEvent): AssistantMess
   switch (ev.type) {
     case 'start':
       return { ...msg, demo: ev.demo }
+    case 'plan':
+      return { ...msg, plan: ev.labels }
+    case 'notice':
+      return { ...msg, notices: [...(msg.notices ?? []), ev.message] }
     case 'text_delta':
       return { ...msg, text: msg.text + ev.text }
     case 'text_break':

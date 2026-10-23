@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { historyFor } from './api'
-import { formatValue, toCsv } from './format'
+import { formatValue, sourceBadge, toCsv } from './format'
 import { applyEvent } from './reducer'
 import { createSseParser } from './sse'
 import type { AgentEvent, AssistantMessage, Message } from './types'
@@ -36,9 +36,30 @@ describe('applyEvent', () => {
     expect(msg.status).toBe('done')
   })
 
+  it('gemmer AIDA\'s plan og advarsler om ubekræftede tal', () => {
+    const msg = [
+      { type: 'plan', capabilities: ['sql', 'forecast'], labels: ['SQL', 'Prognose'], tools: ['run_sql', 'run_ml'],
+        ml_functions: ['forecast_timeseries'], notes: [] },
+      { type: 'notice', level: 'warning', message: 'Ubekræftede tal' },
+      { type: 'done' },
+    ].reduce((m, e) => applyEvent(m, e as AgentEvent), empty())
+    expect(msg.plan).toEqual(['SQL', 'Prognose'])
+    expect(msg.notices).toEqual(['Ubekræftede tal'])
+    expect(msg.status).toBe('done')
+  })
+
   it('markerer fejl', () => {
     const msg = applyEvent(empty(), { type: 'error', message: 'Ups' })
     expect(msg).toMatchObject({ status: 'error', error: 'Ups' })
+  })
+})
+
+describe('sourceBadge', () => {
+  it('viser aldrig syntetiske data som rigtige', () => {
+    expect(sourceBadge({ demo: true, data_source: 'demo' })).toBe('DEMODATA')
+    expect(sourceBadge({ demo: true, data_source: 'databricks' })).toBe('TESTDATA')
+    expect(sourceBadge({ demo: false, data_source: 'databricks' })).toBe('Databricks')
+    expect(sourceBadge({ demo: false, data_source: 'local_export' })).toBe('Udtræk')
   })
 })
 

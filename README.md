@@ -4,9 +4,16 @@ Selvstændig hjemmeside, hvor man stiller spørgsmål om MealMind på almindelig
 **SQL-forespørgsler, statistiske analyser, ML-modeller, grafer, tabeller og forklaringer**.
 Projektet er helt adskilt fra MealMind-appen og deler hverken kode, database eller backend med den.
 
-> **DEMODATA:** Indtil de rigtige Azure Databricks-datasæt er tilgængelige, kører assistenten på to
-> syntetiske datasæt (`meal_events`, `pantry_items`). Det vises tydeligt i UI'et, i datasættenes
-> beskrivelse og i AI'ens svar.
+Datakilder (`DATA_SOURCE`):
+
+| Værdi | Data | Mærkat i UI |
+|---|---|---|
+| `demo` (standard) | To syntetiske demodatasæt i lokal DuckDB | DEMODATA |
+| `local_export` | Et godkendt, pseudonymiseret udtræk af MealMinds rigtige data (fra `biteowl/data-platform`) | Udtræk |
+| `databricks` | MealMinds Silver/Gold-tabeller i Azure Databricks via SQL Warehouse | Databricks |
+
+Syntetiske data vises altid som DEMODATA/TESTDATA – også hvis et Databricks-katalog eller udtræk er markeret
+som testdata – og AI'en får besked på aldrig at præsentere dem som rigtige brugere.
 
 ## Sådan virker det
 
@@ -15,10 +22,19 @@ Browser (React)  ──SSE──▶  FastAPI  ──▶  AI-agent (function call
                                          ├─ run_sql      → SQL-guard → read-only DB (DuckDB / Databricks)
                                          ├─ analyze_data → pandas-statistik (ingen vilkårlig kode)
                                          ├─ run_ml       → ML-registry (scikit-learn + Databricks Model Serving)
+                                         │                 (højst ML_MAX_CALLS_PER_QUESTION kørsler pr. spørgsmål)
                                          ├─ create_chart → graf-spec til frontend
                                          └─ show_table   → tabel til frontend
 ```
 
+- **Automatisk værktøjsvalg:** en deterministisk router (`backend/app/agent/router.py`) vurderer først, om
+  spørgsmålet kræver SQL, statistik, prognose, similarity search, segmentering, afvigelser, klassifikation,
+  visualisering – eller en kombination – og om det handler om madspild. Vurderingen vises som "Analyse:"-chips
+  i UI'et og gives til modellen som hint. Modellen vælger derefter de konkrete værktøjskald, men kun blandt de
+  godkendte værktøjer og ML-funktioner.
+- **Ingen opfundne resultater:** alle tal skal komme fra værktøjsresultater. Indeholder et svar tal, uden at der
+  er hentet eller beregnet data, vises en advarsel. ML-funktioner afviser for små datasæt med en forklaring,
+  og antallet af ML-kørsler pr. spørgsmål er begrænset.
 - **Agenten vælger selv** værktøjer ud fra spørgsmålet. Der er ingen hardcodede svar: skemaet
   (tabeller, kolonner, typer, eksempelværdier) introspekteres fra databasen ved opstart og gives til
   modellen, som skriver SQL og vælger analyser/modeller.
@@ -35,8 +51,13 @@ Browser (React)  ──SSE──▶  FastAPI  ──▶  AI-agent (function call
 | `forecast_timeseries` | Prognose (lineær trend + sæson) med backtest og ≈95%-interval |
 | `segment_clusters` | Segmentering af fx brugere (KMeans, automatisk valg af antal) |
 | `detect_anomalies` | Usædvanlige dage/værdier (robust z-score) |
-| `predict_outcome` | Klassifikationsmodel for binære udfald (fx madspild) med AUC og feature-betydning |
+| `predict_outcome` | Klassifikationsmodel for binære udfald (fx sprunget måltid) med AUC og feature-betydning |
+| `find_similar` | Similarity search: lignende retter/varer ud fra navn og evt. næring (virker med få data) |
 | `endpoint_*` | Eksisterende modeller i Databricks Model Serving (`DATABRICKS_ML_ENDPOINTS`) |
+
+Modeller trænet i Databricks (similarity, segmenter, skip-klassifikation, afvigelser) skrives til
+`mealmind.gold.*` og læses med almindelig SQL. `gold.ml_model_status` forklarer, hvilke modeller der er trænet,
+og hvorfor andre mangler (fx for få brugere, eller at MealMind ikke registrerer madspild).
 
 ## Kom i gang lokalt
 
@@ -56,31 +77,44 @@ Udvikling med hot reload: `scripts/dev.sh` (frontend på http://localhost:5173, 
 scripts/test.sh
 ```
 
-Kører backend-tests (pytest: SQL-sikkerhed, read-only forbindelse, tools, ML, agent-loop, API, SDK-format),
+Kører backend-tests (pytest: SQL-sikkerhed, read-only forbindelse, tools, ML, agent-loop, API, SDK-format,
+værktøjsvalg, Databricks med mocket SQL Warehouse – token og OAuth – samt lokalt udtræk),
 frontend-tests (vitest), lint, typecheck og produktionsbuild. En scriptet test-LLM
 (`ASSISTANT_TEST_MODE=1`) bruges til end-to-end-tests uden API-nøgle; den bruges aldrig i drift.
 
 ## Forbind til Azure Databricks
 
-1. Opret en service principal (eller et token) med **kun læseadgang**:
-   ```sql
-   GRANT USE CATALOG ON CATALOG main TO `mealmind-assistant`;
-   GRANT USE SCHEMA ON SCHEMA main.mealmind TO `mealmind-assistant`;
-   GRANT SELECT ON TABLE main.mealmind.<tabel1> TO `mealmind-assistant`;
-   GRANT SELECT ON TABLE main.mealmind.<tabel2> TO `mealmind-assistant`;
-   ```
-   og giv den `CAN USE` på SQL Warehouse'et.
+Pipelinen, der bygger tabellerne, ligger i `biteowl/data-platform` (eksport → Bronze → Silver → Gold + ML).
+Hele opsætningen i Azure Portal og Databricks er beskrevet trin for trin i
+`biteowl/data-platform/docs/AZURE_SETUP.md`. Kort:
+
+1. Opret en service principal `mealmind-aida` med **kun læseadgang** (`USE CATALOG`, `USE SCHEMA`, `SELECT` på
+   `mealmind.silver` og `mealmind.gold`) og *Can use* på SQL Warehouse'et.
 2. Udfyld i `.env`:
    ```
    DATA_SOURCE=databricks
    DATABRICKS_SERVER_HOSTNAME=adb-....azuredatabricks.net
    DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/...
-   DATABRICKS_TOKEN=...
-   DATABRICKS_TABLES=main.mealmind.<tabel1>,main.mealmind.<tabel2>
+   DATABRICKS_CLIENT_ID=...          # OAuth M2M (anbefalet) – alternativt DATABRICKS_TOKEN
+   DATABRICKS_CLIENT_SECRET=...
+   DATABRICKS_TABLES=mealmind.silver.*,mealmind.gold.*
    ```
-3. Undersøg datasættene: `cd backend && .venv/bin/python -m app.inspect_data`
-   (kolonner, typer, null-andele, antal unikke værdier og eksempler).
-4. Genstart. Tilføj gerne kolonne- og tabelkommentarer i Unity Catalog – de vises for AI'en og forbedrer svarene.
+   `catalog.schema.*` finder selv alle tabeller i skemaet (interne `_`-tabeller udelades). Tabel- og
+   kolonnekommentarer fra Unity Catalog vises for AI'en.
+3. Undersøg datasættene: `cd backend && .venv/bin/python -m app.inspect_data`.
+4. Genstart. Sidebaren viser **Databricks**.
+
+### Lokalt udtræk uden Databricks
+
+Et godkendt udtræk fra `biteowl/data-platform` (`python -m mealmind_data export`) kan analyseres direkte:
+
+```
+DATA_SOURCE=local_export
+LOCAL_EXPORT_DIR=/sti/til/exports       # én batch-mappe eller en mappe med flere (nyeste bruges)
+```
+
+AIDA kontrollerer manifestets checksummer og kvalitetsflag, indlæser Parquet-filerne i en read-only DuckDB og
+markerer data som testdata, hvis manifestet siger `contains_synthetic_data: true`. Udtræk må aldrig ligge i Git.
 
 ## Sikkerhed
 
@@ -96,7 +130,9 @@ AI-genereret SQL passerer flere uafhængige lag:
 4. API: valgfrit adgangstoken (`APP_ACCESS_TOKEN`), rate limit, CORS-allowlist, sikkerhedsheaders (CSP m.m.).
    API-nøgler og Databricks-token ligger kun på serveren.
 
-Analyser og ML kører som foruddefinerede funktioner – modellen kan ikke køre vilkårlig Python.
+Analyser og ML kører som foruddefinerede funktioner – modellen kan ikke køre vilkårlig Python, og højst
+`ML_MAX_CALLS_PER_QUESTION` ML-kørsler er tilladt pr. spørgsmål. Databricks-identiteten bør være en service
+principal med OAuth-secret; secrets læses kun fra miljøvariabler.
 
 ## Hosting
 

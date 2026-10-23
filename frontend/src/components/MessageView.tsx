@@ -71,6 +71,12 @@ function Assistant({ msg }: { msg: AssistantMessage }) {
     <article className="msg msg-assistant" aria-busy={streaming}>
       <div className="avatar" aria-hidden>MM</div>
       <div className="msg-body">
+        {msg.plan && msg.plan.length > 0 && (
+          <div className="plan" aria-label="Valgt analyse">
+            <span className="muted">Analyse:</span>
+            {msg.plan.map((p) => <span key={p} className="plan-chip">{p}</span>)}
+          </div>
+        )}
         <Steps steps={msg.steps} streaming={streaming} />
         {thinking && <div className="thinking"><span className="spinner" /> Tænker…</div>}
         {msg.text && (
@@ -81,6 +87,7 @@ function Assistant({ msg }: { msg: AssistantMessage }) {
         {msg.visuals.map((v) =>
           v.kind === 'chart' ? <ChartView key={v.id} spec={v.chart} /> : <DataTable key={v.id} spec={v.table} />,
         )}
+        {msg.notices?.map((n) => <div key={n} className="notice-box" role="note">{n}</div>)}
         {msg.status === 'error' && <div className="error-box" role="alert">{msg.error}</div>}
       </div>
     </article>

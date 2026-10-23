@@ -14,14 +14,17 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field, ValidationError
 from sklearn.cluster import KMeans
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.inspection import permutation_importance
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import accuracy_score, roc_auc_score, silhouette_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 from app.config import Settings
+from app.data.databricks_auth import DatabricksConfigError, rest_headers
 from app.tools.analysis import FREQ_ALIAS
 from app.tools.results import ResultStore, StoredResult, ToolError, json_value, require_columns
 
@@ -58,6 +61,14 @@ class OutcomeParams(BaseModel):
     feature_columns: list[str] = Field(min_length=1, max_length=30)
     score_where_target_equals: str | float | bool | None = None
     id_columns: list[str] | None = None
+
+
+class SimilarParams(BaseModel):
+    result_id: str
+    item_column: str
+    query: str | None = None
+    feature_columns: list[str] = Field(default_factory=list, max_length=20)
+    top_k: int = Field(default=5, ge=1, le=25)
 
 
 class EndpointParams(BaseModel):
@@ -276,6 +287,55 @@ def predict_outcome(store: ResultStore, p: OutcomeParams):
     }
 
 
+def find_similar(store: ResultStore, p: SimilarParams):
+    """Similarity search: tekstlighed (tegn-n-gram) i item_column kombineret med standardiserede numeriske features."""
+    src = store.get(p.result_id)
+    require_columns(src.df, p.item_column, *p.feature_columns)
+    df = src.df.dropna(subset=[p.item_column]).copy()
+    df["_key"] = df[p.item_column].astype(str).str.strip().str.casefold()
+    num_cols = p.feature_columns
+    items = df.groupby("_key").agg(item=(p.item_column, "first"), rows=(p.item_column, "size"),
+                                   **{c: (c, "mean") for c in num_cols} if num_cols else {}).reset_index()
+    if len(items) < 3:
+        raise ToolError("Similarity search kræver mindst 3 forskellige værdier i item_column.")
+    text = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4)).fit_transform(items["_key"])
+    sim = cosine_similarity(text)
+    if num_cols:
+        feats = items[num_cols].apply(pd.to_numeric, errors="coerce")
+        feats = feats.fillna(feats.median()).fillna(0)
+        num = StandardScaler().fit_transform(feats) if len(feats) > 1 else feats.to_numpy()
+        sim = 0.6 * sim + 0.4 * cosine_similarity(num)
+
+    def neighbours(i: int) -> list[dict]:
+        order = [j for j in np.argsort(-sim[i]) if j != i][: p.top_k]
+        return [{"item": items.at[i, "item"], "similar_item": items.at[j, "item"],
+                 "similarity": round(float(sim[i, j]), 4), "rank": r + 1} for r, j in enumerate(order)]
+
+    if p.query:
+        q = p.query.strip().casefold()
+        if q in set(items["_key"]):
+            idx = int(items.index[items["_key"] == q][0])
+        else:
+            qv = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4)).fit(items["_key"].tolist() + [q])
+            scores = cosine_similarity(qv.transform([q]), qv.transform(items["_key"]))[0]
+            idx = int(np.argmax(scores))
+            if scores[idx] < 0.2:
+                raise ToolError(f"'{p.query}' ligner ingen værdier i {p.item_column}.")
+        rows = neighbours(idx)
+        matched = items.at[idx, "item"]
+    else:
+        rows = [r for i in range(len(items)) for r in neighbours(i) if r["rank"] == 1]
+        matched = None
+    out = pd.DataFrame(rows)
+    result = store.add(out, f"Lignende {p.item_column}" + (f" som '{matched}'" if matched else ""), origin="ml")
+    return [result], {
+        "method": "Cosine similarity på tegn-n-gram (TF-IDF)" + (" + standardiserede features" if num_cols else ""),
+        "items_compared": int(len(items)),
+        "query_matched": matched,
+        "top_similarity": json_value(out["similarity"].max()) if len(out) else None,
+    }
+
+
 def _looks_like_date(s: pd.Series) -> bool:
     sample = s.dropna().head(5)
     return len(sample) > 0 and all(hasattr(v, "isoformat") for v in sample)
@@ -289,9 +349,13 @@ def _endpoint_runner(settings: Settings, endpoint: str):
             require_columns(src.df, *p.columns)
         records = [{c: json_value(v) for c, v in r.items()} for r in df.head(p.max_rows).to_dict(orient="records")]
         url = f"https://{settings.databricks_server_hostname}/serving-endpoints/{endpoint}/invocations"
+        try:
+            headers = rest_headers(settings)
+        except DatabricksConfigError as e:
+            raise ToolError(str(e)) from e
         req = urllib.request.Request(
             url, data=json.dumps({"dataframe_records": records}).encode(), method="POST",
-            headers={"Authorization": f"Bearer {settings.databricks_token}", "Content-Type": "application/json"},
+            headers={**headers, "Content-Type": "application/json"},
         )
         try:
             with urllib.request.urlopen(req, timeout=settings.sql_timeout_seconds) as resp:
@@ -323,6 +387,11 @@ LOCAL_FUNCTIONS = [
                "feature-betydning. Kan score rækker uden kendt udfald (score_where_target_equals, fx 'in_stock'). "
                "Params: result_id, target_column, positive_value, feature_columns, score_where_target_equals, id_columns.",
                OutcomeParams, predict_outcome),
+    MLFunction("find_similar",
+               "Similarity search: finder de mest lignende værdier (fx retter eller varer) ud fra navnet og evt. "
+               "numeriske features. Med query: naboer til én bestemt værdi; uden: nærmeste nabo for hver værdi. "
+               "Virker med få rækker. Params: result_id, item_column, query, feature_columns, top_k.",
+               SimilarParams, find_similar),
 ]
 
 

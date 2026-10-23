@@ -1,0 +1,12 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic-settings>=2.4
+sse-starlette>=2.1
+openai>=3.37
+anthropic>=1.0
+duckdb>=1.1
+pandas>=2.2
+numpy>=2.0
+scikit-learn>=1.5
+sqlglot>=25.0
+databricks-sql-connector>=3.4

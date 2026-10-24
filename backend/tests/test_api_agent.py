@@ -153,3 +153,14 @@ def test_system_prompt_contains_live_schema_and_demo_notice(source):
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+@pytest.mark.parametrize("name", ["INSIGHTS_TEST_MODE", "ASSISTANT_TEST_MODE"])
+def test_test_mode_env_var_new_and_old_name(monkeypatch, name):
+    from app.config import Settings
+
+    monkeypatch.delenv("INSIGHTS_TEST_MODE", raising=False)
+    monkeypatch.delenv("ASSISTANT_TEST_MODE", raising=False)
+    monkeypatch.setenv(name, "1")
+    assert Settings(_env_file=None).assistant_test_mode is True
+    assert Settings(_env_file=None, assistant_test_mode=False).assistant_test_mode is False

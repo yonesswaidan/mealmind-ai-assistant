@@ -1,4 +1,4 @@
-"""Scriptet LLM til automatiske tests (ASSISTANT_TEST_MODE). Kalder de rigtige værktøjer, men beslutter ikke selv.
+"""Scriptet LLM til automatiske tests (INSIGHTS_TEST_MODE, tidligere ASSISTANT_TEST_MODE). Kalder de rigtige værktøjer, men beslutter ikke selv.
 
 Bruges aldrig i normal drift; svaret markeres tydeligt med [Testtilstand].
 """

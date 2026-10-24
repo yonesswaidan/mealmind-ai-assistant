@@ -1,6 +1,6 @@
 """Første vurdering af hvilke værktøjer et spørgsmål kræver (SQL, statistik, ML, prognose, visualisering).
 
-Vurderingen er deterministisk og forklarlig: den vises i UI'et som AIDA's plan og gives til AI-modellen som et
+Vurderingen er deterministisk og forklarlig: den vises i UI'et som MealMind Insights' plan og gives til AI-modellen som et
 hint. Modellen vælger stadig selv de endelige værktøjskald ud fra data, men kun blandt de godkendte værktøjer,
 og den kan ikke træne modeller uden for ML-registret.
 """

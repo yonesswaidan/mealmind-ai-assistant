@@ -2,7 +2,7 @@
 
 Kører et fast sæt spørgsmål mod den konfigurerede AI-model og datakilde (fra .env) og kontrollerer, at agenten
 bruger SQL, statistik, ML og grafer, hvor det forventes – og at hvert svar bygger på hentede data.
-Bruger rigtige API-kald (koster tokens). Med ASSISTANT_TEST_MODE=1 køres et scriptet forløb uden API-nøgle.
+Bruger rigtige API-kald (koster tokens). Med INSIGHTS_TEST_MODE=1 køres et scriptet forløb uden API-nøgle.
 """
 
 import argparse
@@ -97,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     settings = get_settings()
     if not settings.assistant_test_mode and not credentials_available(settings):
-        print("AI-nøgle mangler (OPENAI_API_KEY). Sæt den i .env eller brug ASSISTANT_TEST_MODE=1.", file=sys.stderr)
+        print("AI-nøgle mangler (OPENAI_API_KEY). Sæt den i .env eller brug INSIGHTS_TEST_MODE=1.", file=sys.stderr)
         return 2
     results = asyncio.run(evaluate(settings))
     for r in results:

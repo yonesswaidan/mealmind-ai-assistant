@@ -2,7 +2,7 @@
 
 Lavet med den rigtige eksport i `biteowl/data-platform` (`export_extract`) ud fra dens håndskrevne
 testdatabase. Indholdet er **syntetisk** (`contains_synthetic_data: true`), pseudonymiseret med en
-testnøgle og indeholder ingen rigtige brugerdata. Bruges til at sikre, at AIDA kan læse præcis det format,
+testnøgle og indeholder ingen rigtige brugerdata. Bruges til at sikre, at MealMind Insights kan læse præcis det format,
 som MealMind-eksporten skriver (typer, tidszoner, manifest og checksummer).
 
 Regenerér efter ændringer i datakontrakten (fra `biteowl/data-platform`):

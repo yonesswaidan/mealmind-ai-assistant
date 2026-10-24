@@ -55,7 +55,7 @@ CATEGORICAL_TYPES = ("VARCHAR", "STRING", "BOOLEAN")
 # Tabelkommentarer med disse præfikser markerer syntetiske data (sættes af demo-generatoren og Databricks-pipelinen).
 SYNTHETIC_PREFIXES = ("DEMODATA", "SYNTETISKE TESTDATA")
 _IDENT = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]*$")
-# Rettigheder der er i orden for AIDA's identitet; alt andet (MODIFY, CREATE ..., ALL PRIVILEGES, ejerskab) afvises.
+# Rettigheder der er i orden for MealMind Insights' identitet; alt andet (MODIFY, CREATE ..., ALL PRIVILEGES, ejerskab) afvises.
 READ_PRIVILEGES = {"SELECT", "USE CATALOG", "USE SCHEMA", "BROWSE", "EXECUTE", "READ VOLUME"}
 
 # Kendte Databricks-fejl oversat til danske forklaringer med løsning. Den oprindelige fejlkode beholdes.

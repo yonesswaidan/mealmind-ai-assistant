@@ -2,14 +2,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=BACKEND_DIR.parent / ".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=BACKEND_DIR.parent / ".env", extra="ignore", populate_by_name=True)
 
     # "demo" bruger lokal DuckDB med genererede demodata; "databricks" bruger et SQL Warehouse;
     # "local_export" bruger et godkendt, pseudonymiseret MealMind-udtræk (Parquet + manifest.json) lokalt.
@@ -58,7 +58,9 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 20
 
     # Kun til automatiske tests: erstatter AI-modellen med et scriptet forløb, der stadig kører de rigtige tools.
-    assistant_test_mode: bool = False
+    # INSIGHTS_TEST_MODE er det nye navn; ASSISTANT_TEST_MODE (fra før omdøbningen) virker fortsat.
+    assistant_test_mode: bool = Field(
+        default=False, validation_alias=AliasChoices("insights_test_mode", "assistant_test_mode"))
 
     frontend_dist: Path = Field(default=BACKEND_DIR.parent / "frontend" / "dist")
 

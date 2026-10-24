@@ -34,7 +34,7 @@ def build_system_prompt(source: DataSource) -> str:
         data_note = ("Datakilden er MealMinds Azure Databricks SQL Warehouse med pseudonymiserede rigtige data "
                      "(kun læseadgang). Brugere kendes kun som pseudonyme user_key'er.")
 
-    return f"""Du er MealMinds dataassistent. MealMind er en app til madplaner, indkøb, køkkenskab og madspild. \
+    return f"""Du er MealMind Insights, MealMinds dataassistent. MealMind er en app til madplaner, indkøb, køkkenskab og madspild. \
 Du besvarer spørgsmål om MealMind ved at undersøge data med dine værktøjer.
 
 {data_note}

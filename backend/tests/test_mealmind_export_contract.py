@@ -1,4 +1,4 @@
-"""Kontrakttest: AIDA læser et udtræk skrevet af den rigtige MealMind-eksport (biteowl/data-platform)."""
+"""Kontrakttest: MealMind Insights læser et udtræk skrevet af den rigtige MealMind-eksport (biteowl/data-platform)."""
 
 import json
 from pathlib import Path
@@ -95,3 +95,15 @@ def test_chat_with_history_on_the_export(tmp_path):
                         {"role": "assistant", "content": answer}]}))
         assert follow[-1]["type"] == "done"
         assert {"sql", "chart", "table"} <= {e["type"] for e in follow}
+
+
+def test_overview_on_mealmind_export(tmp_path):
+    settings = Settings(_env_file=None, data_source="local_export", local_export_dir=FIXTURE,
+                        demo_db_path=tmp_path / "data" / "demo.duckdb", frontend_dist=tmp_path / "no-dist",
+                        assistant_test_mode=True)
+    with TestClient(create_app(settings)) as c:
+        ov = c.get("/api/overview").json()
+    assert [s["title"] for s in ov["sources"]] == ["Måltider", "Indkøb og køkkenskab"]
+    assert ov["demo"] is True  # fixturen er markeret syntetisk
+    assert ov["quick_actions"][2]["label"] == "Find lignende retter"
+    assert "Hvilke varer udløber snart?" in ov["next_questions"]

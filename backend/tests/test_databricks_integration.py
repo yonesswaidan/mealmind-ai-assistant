@@ -275,6 +275,11 @@ class FakeCursor:
         elif "information_schema.columns" in sql:
             entry = INFO.get(p["s"], {}).get(p["t"])
             self.rows = list(entry[1]) if entry else []
+        elif "ml_model_status" in sql and sql.lstrip().upper().startswith("SELECT MODEL_NAME"):
+            self.rows = [("meal_similarity", "trained", "Trænet på alle retter."),
+                         ("user_segments", "insufficient_data", "Kræver mindst 10 brugere."),
+                         ("food_waste_prediction", "not_available", "MealMind registrerer ikke madspild.")]
+            self.description = [("model_name",), ("status",), ("reason",)]
         elif "GROUP BY 1" in sql:
             self.rows = [("eaten", 5), ("skipped", 2)]
         elif "COUNT(*)" in sql and "information_schema" not in sql and "FROM `" in sql:
@@ -551,3 +556,47 @@ def test_ad_hoc_ml_on_demo_data_is_never_production_ready(executor):
     summary = json.loads(out.content)["summary"]
     assert summary["production_ready"] is False and "ikke produktionsklar" in summary["data_warning"]
     assert out.events[0]["summary"]["data_origin"] == "syntetiske testdata"
+
+
+# ── Overblik til hjemmesiden ─────────────────────────────────────────────
+
+
+def test_overview_demo(client):
+    ov = client.get("/api/overview").json()
+    assert ov["demo"] is True and ov["data_source"] == "demo"
+    assert [s["title"] for s in ov["sources"]] == ["Måltider", "Køkkenskab"]
+    assert all(s["origin"] == "demo" for s in ov["sources"])
+    labels = [a["label"] for a in ov["quick_actions"]]
+    assert labels == ["Vis ugens overblik", "Find afvigelser", "Find lignende retter"]
+    similar = ov["quick_actions"][2]["question"]
+    assert similar.startswith("Hvilke retter ligner ") and "hinanden" not in similar  # bruger en rigtig ret fra data
+    assert "Hvilke varer udløber snart?" in ov["next_questions"]
+    assert {m["title"] for m in ov["ml_status"]} >= {"Lignende retter", "Prognoser"}
+    assert all(m["label"] == "Demo" and m["source"] == "local" for m in ov["ml_status"])
+
+
+def test_overview_suggestions_run_end_to_end(client):
+    ov = client.get("/api/overview").json()
+    for action in ov["quick_actions"]:
+        events = sse_events(client.post("/api/chat", json={"message": action["question"]}))
+        assert events[-1]["type"] == "done", action
+
+
+def test_overview_reads_ml_status_from_databricks(fake_databricks):
+    with TestClient(create_app(db_settings())) as c:
+        ov = c.get("/api/overview").json()
+    assert ov["demo"] is False
+    titles = {s["table"]: s["title"] for s in ov["sources"]}
+    assert titles["mealmind.silver.meal_events"] == "Måltider"
+    assert titles["mealmind.silver.shopping_food_items"] == "Indkøb og køkkenskab"
+    status = {m["name"]: m for m in ov["ml_status"]}
+    assert status["user_segments"]["label"] == "For lidt data"
+    assert status["food_waste_prediction"]["label"] == "Ikke muligt"
+    assert status["meal_similarity"]["title"] == "Lignende retter" and status["meal_similarity"]["source"] == "databricks"
+    assert status["meal_similarity"]["label"] in ("Klar", "Afprøvning")
+
+
+def test_overview_requires_token(settings):
+    settings.app_access_token = "s3cret"
+    with TestClient(create_app(settings)) as c:
+        assert c.get("/api/overview").status_code == 401

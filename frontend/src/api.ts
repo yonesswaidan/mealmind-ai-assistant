@@ -1,13 +1,23 @@
 import { createSseParser } from './sse'
-import type { AgentEvent, DatasetsResponse, Health, Message } from './types'
+import type { AgentEvent, DatasetsResponse, Health, Message, Overview } from './types'
 
-const TOKEN_KEY = 'mealmind-assistant-token'
+const TOKEN_KEY = 'mealmind-insights-token'
+// Navnet før omdøbningen til MealMind Insights; et gemt token flyttes automatisk til den nye nøgle.
+const LEGACY_TOKEN_KEY = 'mealmind-assistant-token'
 
 export class AuthError extends Error {}
 
 export function getToken(): string {
   try {
-    return localStorage.getItem(TOKEN_KEY) ?? ''
+    const current = localStorage.getItem(TOKEN_KEY)
+    if (current) return current
+    const legacy = localStorage.getItem(LEGACY_TOKEN_KEY)
+    if (legacy) {
+      localStorage.setItem(TOKEN_KEY, legacy)
+      localStorage.removeItem(LEGACY_TOKEN_KEY)
+      return legacy
+    }
+    return ''
   } catch {
     return ''
   }
@@ -38,6 +48,7 @@ async function getJson<T>(path: string): Promise<T> {
 
 export const fetchHealth = () => getJson<Health>('/api/health')
 export const fetchDatasets = () => getJson<DatasetsResponse>('/api/datasets')
+export const fetchOverview = () => getJson<Overview>('/api/overview')
 
 export function historyFor(messages: Message[]) {
   return messages

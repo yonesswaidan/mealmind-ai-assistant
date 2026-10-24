@@ -1,44 +1,48 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { AuthError, fetchDatasets, fetchHealth, historyFor, setToken, streamChat } from './api'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AuthError, fetchDatasets, fetchHealth, fetchOverview, historyFor, setToken, streamChat } from './api'
+import { IconArrowUp, IconMenu, IconSpark, IconStop, LeafLogo } from './components/Icons'
+import { InsightsPanel } from './components/InsightsPanel'
 import { MessageView } from './components/MessageView'
-import { Sidebar } from './components/Sidebar'
+import { NavSidebar, type View } from './components/NavSidebar'
+import { AnalysesView, Hero, OverviewView, QuickActions, SourcesView } from './components/Views'
+import { loadConversations, saveConversation, type StoredConversation } from './conversations'
+import { MODE_TEXT, dataMode } from './insights'
 import { applyEvent } from './reducer'
-import type { AssistantMessage, DatasetsResponse, Health, Message } from './types'
-
-const SUGGESTIONS = [
-  'Hvordan har antallet af aktive brugere udviklet sig måned for måned?',
-  'Hvilke varekategorier bliver oftest spildt, og hvad koster spildet?',
-  'Hvilke faktorer forudsiger, om en vare bliver spildt?',
-  'Lav en prognose for de ugentlige madudgifter de næste 8 uger',
-  'Kan brugerne inddeles i segmenter ud fra deres måltidsvaner?',
-  'Springer brugere med AI-genererede madplaner færre måltider over?',
-]
+import type { AssistantMessage, DatasetsResponse, Health, Message, Overview, SourceInfo } from './types'
 
 let idCounter = 0
-const newId = () => `m${Date.now()}-${idCounter++}`
+const newId = (prefix = 'm') => `${prefix}${Date.now()}-${idCounter++}`
 
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
   const [datasets, setDatasets] = useState<DatasetsResponse | null>(null)
+  const [overview, setOverview] = useState<Overview | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
+  const [conversationId, setConversationId] = useState(() => newId('c'))
+  const [conversations, setConversations] = useState<StoredConversation[]>(() => loadConversations())
+  const [view, setView] = useState<View>('assistant')
+  const [sourceFocus, setSourceFocus] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [needToken, setNeedToken] = useState(false)
   const [tokenInput, setTokenInput] = useState('')
   const [loadError, setLoadError] = useState('')
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [navOpen, setNavOpen] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const endRef = useRef<HTMLDivElement | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const load = useCallback(async () => {
     try {
       setHealth(await fetchHealth())
-      setDatasets(await fetchDatasets())
+      const [ds, ov] = await Promise.all([fetchDatasets(), fetchOverview()])
+      setDatasets(ds)
+      setOverview(ov)
       setNeedToken(false)
       setLoadError('')
     } catch (e) {
       if (e instanceof AuthError) setNeedToken(true)
-      else setLoadError('Kan ikke forbinde til backend. Kører serveren?')
+      else setLoadError('Kan ikke forbinde til serveren. Kører backend?')
     }
   }, [])
 
@@ -47,23 +51,33 @@ export default function App() {
   }, [load])
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages])
+    if (view === 'assistant') endRef.current?.scrollIntoView({ block: 'end' })
+  }, [messages, view])
+
+  const mode = dataMode(health)
+  const asked = useMemo(() => new Set(messages.filter((m) => m.role === 'user').map((m) => m.text)), [messages])
+  const nextQuestions = (overview?.next_questions ?? []).filter((q) => !asked.has(q)).slice(0, 3)
 
   async function send(text: string) {
     const question = text.trim()
     if (!question || busy) return
+    setView('assistant')
+    setNavOpen(false)
     const history = historyFor(messages)
     const assistantId = newId()
     const assistant: AssistantMessage = { role: 'assistant', id: assistantId, text: '', steps: [], visuals: [], status: 'streaming' }
-    setMessages((m) => [...m, { role: 'user', id: newId(), text: question }, assistant])
+    const convId = conversationId
+    let latest: Message[] = [...messages, { role: 'user', id: newId(), text: question }, assistant]
+    setMessages(latest)
     setInput('')
     setBusy(true)
     const controller = new AbortController()
     abortRef.current = controller
 
-    const update = (fn: (a: AssistantMessage) => AssistantMessage) =>
-      setMessages((all) => all.map((m) => (m.id === assistantId && m.role === 'assistant' ? fn(m) : m)))
+    const update = (fn: (a: AssistantMessage) => AssistantMessage) => {
+      latest = latest.map((m) => (m.id === assistantId && m.role === 'assistant' ? fn(m) : m))
+      setMessages(latest)
+    }
 
     try {
       await streamChat(question, history, (ev) => update((a) => applyEvent(a, ev)), controller.signal)
@@ -75,108 +89,115 @@ export default function App() {
     } finally {
       setBusy(false)
       abortRef.current = null
+      setConversations(saveConversation(convId, latest))
     }
   }
 
   function newChat() {
     abortRef.current?.abort()
     setMessages([])
-    setSidebarOpen(false)
+    setConversationId(newId('c'))
+    setView('assistant')
+    setNavOpen(false)
+    inputRef.current?.focus()
   }
 
-  const demo = health?.demo ?? datasets?.demo
+  function openConversation(c: StoredConversation) {
+    abortRef.current?.abort()
+    setMessages(c.messages)
+    setConversationId(c.id)
+    setView('assistant')
+    setNavOpen(false)
+  }
+
+  function openSource(s?: SourceInfo) {
+    setSourceFocus(s?.table ?? null)
+    setView('sources')
+  }
+
+  const banners = (
+    <>
+      {health?.source_error && <div className="banner banner-warn" role="alert">{health.source_error}</div>}
+      {health?.read_only_check?.status === 'write_access' && (
+        <div className="banner banner-warn" role="alert">{health.read_only_check.message}</div>
+      )}
+      {health && !health.llm_configured && (
+        <div className="banner banner-warn" role="alert">
+          AI-modellen er ikke konfigureret. Sæt <code>{health.provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'}</code> i <code>.env</code> og genstart backend.
+        </div>
+      )}
+      {loadError && <div className="banner banner-warn" role="alert">{loadError}</div>}
+      {needToken && (
+        <form className="token-form" onSubmit={(e) => { e.preventDefault(); setToken(tokenInput.trim()); void load() }}>
+          <label htmlFor="token">Adgangstoken</label>
+          <input id="token" type="password" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} autoComplete="off" />
+          <button className="btn btn-primary" type="submit">Log ind</button>
+        </form>
+      )}
+    </>
+  )
 
   return (
-    <div className="layout">
-      <Sidebar health={health} datasets={datasets} onNewChat={newChat} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <main className="main">
+    <div className="app">
+      <NavSidebar view={view} onView={(v) => { setView(v); setNavOpen(false) }} onNewChat={newChat}
+        conversations={conversations} activeConversation={conversationId} onOpenConversation={openConversation}
+        open={navOpen} onClose={() => setNavOpen(false)} model={health && health.provider !== 'test' ? health.model : undefined} />
+      {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} />}
+
+      <div className="workspace">
         <header className="topbar">
-          <button className="ghost-btn menu-btn" onClick={() => setSidebarOpen(true)} type="button" aria-label="Vis datakilder">☰</button>
-          <h1>MealMind AI Data Assistant</h1>
+          <button className="icon-btn menu-btn" onClick={() => setNavOpen(true)} type="button" aria-label="Åbn menu"><IconMenu /></button>
+          <div className="topbar-brand"><LeafLogo size={26} /> MealMind Insights</div>
+          {mode && (
+            <span className={`mode-badge mode-${mode}`} role="status" title={health?.data_label}>
+              <span className="dot" aria-hidden /> {MODE_TEXT[mode].badge}
+            </span>
+          )}
         </header>
 
-        {demo && (
-          <div className="demo-banner" role="status">
-            <strong>DEMODATA</strong> Svarene bygger på syntetiske data genereret til afprøvning – ikke rigtige MealMind-brugere.
-          </div>
-        )}
-        {health?.source_error && <div className="warn-banner" role="alert">{health.source_error}</div>}
-        {health?.read_only_check?.status === 'write_access' && (
-          <div className="warn-banner" role="alert">{health.read_only_check.message}</div>
-        )}
-        {health && !health.llm_configured && (
-          <div className="warn-banner" role="alert">
-            AI-modellen er ikke konfigureret. Sæt <code>{health.provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'}</code> i <code>.env</code> og genstart backend.
-          </div>
-        )}
-        {loadError && <div className="warn-banner" role="alert">{loadError}</div>}
+        <div className="columns">
+          <main className="main" id="main">
+            {banners}
+            {view === 'assistant' && (
+              <section className="chat-card" aria-label="AI-assistent">
+                <div className="thread">
+                  <Hero compact={messages.length > 0} />
+                  <QuickActions actions={overview?.quick_actions ?? []} onAsk={(q) => void send(q)} disabled={busy || needToken} />
+                  {messages.map((m) => <MessageView key={m.id} msg={m} mode={mode} />)}
+                  <div ref={endRef} />
+                </div>
+                <form className="composer" onSubmit={(e) => { e.preventDefault(); void send(input) }}>
+                  <IconSpark className="composer-icon" />
+                  <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(input) }
+                    }}
+                    placeholder="Stil et spørgsmål om dine data…" rows={1} maxLength={4000} aria-label="Spørgsmål" disabled={needToken} />
+                  {busy ? (
+                    <button type="button" className="send-btn" onClick={() => abortRef.current?.abort()} aria-label="Stop"><IconStop /></button>
+                  ) : (
+                    <button type="submit" className="send-btn" disabled={!input.trim() || needToken} aria-label="Send"><IconArrowUp /></button>
+                  )}
+                </form>
+              </section>
+            )}
+            {view === 'overview' && (
+              <OverviewView overview={overview} mode={mode} questions={nextQuestions} onAsk={(q) => void send(q)}
+                onOpenSources={() => openSource()} busy={busy || needToken} />
+            )}
+            {view === 'analyses' && (
+              <AnalysesView messages={messages} onAsk={(q) => void send(q)} actions={overview?.quick_actions ?? []} busy={busy || needToken} />
+            )}
+            {view === 'sources' && <SourcesView datasets={datasets} overview={overview} mode={mode} focus={sourceFocus} />}
+          </main>
 
-        {needToken && (
-          <form
-            className="token-form"
-            onSubmit={(e) => {
-              e.preventDefault()
-              setToken(tokenInput.trim())
-              void load()
-            }}
-          >
-            <label htmlFor="token">Adgangstoken</label>
-            <input id="token" type="password" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} autoComplete="off" />
-            <button className="primary-btn" type="submit">Log ind</button>
-          </form>
-        )}
-
-        <div className="thread">
-          {messages.length === 0 ? (
-            <div className="empty">
-              <h2>Spørg om MealMind</h2>
-              <p className="muted">
-                Assistenten vælger selv mellem SQL, statistisk analyse og ML-modeller, og viser grafer, tabeller og forklaringer.
-              </p>
-              <div className="suggestions">
-                {SUGGESTIONS.map((s) => (
-                  <button key={s} type="button" className="suggestion" onClick={() => void send(s)} disabled={busy || needToken}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            messages.map((m) => <MessageView key={m.id} msg={m} />)
-          )}
-          <div ref={endRef} />
+          <aside className="side" aria-label="Datakilder og ML-status">
+            <InsightsPanel overview={overview} mode={mode} questions={nextQuestions} onAsk={(q) => void send(q)}
+              onOpenSource={openSource} busy={busy || needToken} />
+            {mode && <p className="side-foot">{MODE_TEXT[mode].footer}</p>}
+          </aside>
         </div>
-
-        <form
-          className="composer"
-          onSubmit={(e) => {
-            e.preventDefault()
-            void send(input)
-          }}
-        >
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                void send(input)
-              }
-            }}
-            placeholder="Stil et spørgsmål om MealMind-data…"
-            rows={1}
-            maxLength={4000}
-            aria-label="Spørgsmål"
-            disabled={needToken}
-          />
-          {busy ? (
-            <button type="button" className="secondary-btn" onClick={() => abortRef.current?.abort()}>Stop</button>
-          ) : (
-            <button type="submit" className="primary-btn" disabled={!input.trim() || needToken}>Send</button>
-          )}
-        </form>
-      </main>
-      {sidebarOpen && <div className="scrim" onClick={() => setSidebarOpen(false)} />}
+      </div>
     </div>
   )
 }

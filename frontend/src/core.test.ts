@@ -36,7 +36,7 @@ describe('applyEvent', () => {
     expect(msg.status).toBe('done')
   })
 
-  it('gemmer AIDA\'s plan og advarsler om ubekræftede tal', () => {
+  it('gemmer planen og advarsler om ubekræftede tal', () => {
     const msg = [
       { type: 'plan', capabilities: ['sql', 'forecast'], labels: ['SQL', 'Prognose'], tools: ['run_sql', 'run_ml'],
         ml_functions: ['forecast_timeseries'], notes: [] },

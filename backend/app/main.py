@@ -15,11 +15,12 @@ from app.agent.agent import AgentDeps, ChatRequest, run_agent
 from app.agent.llm import create_llm, credentials_available
 from app.agent.prompts import build_system_prompt
 from app.config import Settings, get_settings
+from app.overview import build_overview
 from app.data.sources import DatabricksSource, DataSource, QueryError, create_source
 from app.tools.ml import build_registry
 from app.tools.registry import tool_definitions
 
-log = logging.getLogger("assistant")
+log = logging.getLogger("insights")
 
 
 def open_source(settings: Settings) -> tuple[DataSource, dict]:
@@ -32,7 +33,7 @@ def open_source(settings: Settings) -> tuple[DataSource, dict]:
         status["read_only_check"] = report
         if report["status"] == "write_access":
             if settings.databricks_enforce_read_only:
-                raise QueryError(report["message"] + " AIDA starter ikke med en identitet, der kan skrive "
+                raise QueryError(report["message"] + " MealMind Insights starter ikke med en identitet, der kan skrive "
                                  "(DATABRICKS_ENFORCE_READ_ONLY=true).")
             log.warning(report["message"])
     return source, status
@@ -51,7 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log.error("Datakilden '%s' kunne ikke åbnes - bruger DEMODATA: %s", settings.data_source, e)
             source, status = open_source(settings.model_copy(update={"data_source": "demo"}))
             status["source_error"] = (f"Datakilden '{settings.data_source}' kunne ikke åbnes: {e} "
-                                      "AIDA kører midlertidigt på DEMODATA.")
+                                      "MealMind Insights kører midlertidigt på DEMODATA.")
         app.state.source_status = status
         registry = build_registry(settings)
         if settings.assistant_test_mode:
@@ -64,7 +65,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                    tool_definitions(registry))
         yield
 
-    app = FastAPI(title="MealMind AI Data Assistant", lifespan=lifespan, docs_url=None, redoc_url=None)
+    app = FastAPI(title="MealMind Insights", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allow_methods=["GET", "POST"],
                        allow_headers=["Authorization", "Content-Type"])
 
@@ -134,6 +135,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             } for t in deps.source.tables()],
             "ml_functions": [{"name": f.name, "description": f.description} for f in deps.ml_registry.values()],
         }
+
+    @app.get("/api/overview", dependencies=[Depends(require_token)])
+    def overview(request: Request):
+        deps: AgentDeps = request.app.state.deps
+        return build_overview(deps.source, deps.ml_registry)
 
     @app.post("/api/chat", dependencies=[Depends(require_token), Depends(rate_limit)])
     async def chat(body: ChatRequest, request: Request):

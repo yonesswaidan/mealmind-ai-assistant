@@ -106,3 +106,37 @@ export interface Health {
   source_error?: string | null
   read_only_check?: { status: 'ok' | 'write_access' | 'unknown'; message: string } | null
 }
+
+export interface SourceInfo {
+  table: string
+  title: string
+  kind: 'meals' | 'shopping' | 'ml' | 'other'
+  rows: number | null
+  origin: 'demo' | 'real'
+  description: string
+}
+
+export interface QuickAction {
+  label: string
+  icon: 'chart' | 'search' | 'dish'
+  question: string
+}
+
+export interface MlStatus {
+  name: string
+  title: string
+  status: string
+  label: string
+  detail: string
+  source: 'databricks' | 'local'
+}
+
+export interface Overview {
+  data_source: string
+  data_label: string
+  demo: boolean
+  sources: SourceInfo[]
+  quick_actions: QuickAction[]
+  next_questions: string[]
+  ml_status: MlStatus[]
+}

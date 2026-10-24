@@ -1,4 +1,7 @@
-# MealMind AI Data Assistant
+# MealMind Insights
+
+*(tidligere "MealMind AI Data Assistant" / AIDA – repository- og pakkenavne er uændrede, og gamle
+konfigurationsnøgler virker fortsat; se [Omdøbning](#omdøbning-fra-aida).)*
 
 Selvstændig hjemmeside, hvor man stiller spørgsmål om MealMind på almindeligt dansk og får svar med
 **SQL-forespørgsler, statistiske analyser, ML-modeller, grafer, tabeller og forklaringer**.
@@ -8,12 +11,28 @@ Datakilder (`DATA_SOURCE`):
 
 | Værdi | Data | Mærkat i UI |
 |---|---|---|
-| `demo` (standard) | To syntetiske demodatasæt i lokal DuckDB | DEMODATA |
-| `local_export` | Et godkendt, pseudonymiseret udtræk af MealMinds rigtige data (fra `biteowl/data-platform`) | Udtræk |
-| `databricks` | MealMinds Silver/Gold-tabeller i Azure Databricks via SQL Warehouse | Databricks |
+| `demo` (standard) | To syntetiske demodatasæt i lokal DuckDB | Demotilstand |
+| `local_export` | Et pseudonymiseret udtræk fra `biteowl/data-platform` – rigtige data eller syntetisk demo-udtræk | Rigtige data / Testdata |
+| `databricks` | MealMinds Silver/Gold-tabeller i Azure Databricks via SQL Warehouse | Rigtige data / Testdata (`mealmind_dev`) |
 
 Syntetiske data vises altid som DEMODATA/TESTDATA – også hvis et Databricks-katalog eller udtræk er markeret
 som testdata – og AI'en får besked på aldrig at præsentere dem som rigtige brugere.
+
+## Brugerfladen
+
+Lys, dansk brugerflade med mørkegrønne detaljer, tilpasset computer og mobil:
+
+- **AI-assistent**: overskrift, foreslåede spørgsmål (*Vis ugens overblik*, *Find afvigelser*, *Find lignende retter*),
+  chat med svarkort, der viser analysetypen (fx *Analyse: Statistik*), grafer/tabeller, *Se datagrundlag* (SQL og
+  ML-detaljer) og *Vis som graf*.
+- **Højre panel** (computer) / **Overblik** (mobil): *Dine datakilder* med rækketal og datatilstand,
+  *Næste gode spørgsmål* og *ML-status* (fra `gold.ml_model_status` i Databricks, ellers de lokale ML-funktioner).
+- **Analyser**: alle grafer og tabeller fra samtalen. **Datakilder**: tabeller, kolonner og beskrivelser.
+- **Seneste samtaler** gemmes kun i browseren.
+- Datatilstanden står altid øverst: **Demotilstand**, **Testdata** (syntetisk udtræk eller `mealmind_dev`) eller
+  **Rigtige data**. Forslag og ML-status hentes fra `/api/overview` og tilpasses de tabeller, der findes.
+
+Første demonstration hele vejen gennem Databricks: se `biteowl/data-platform/docs/DEMO.md`.
 
 ## Sådan virker det
 
@@ -65,7 +84,7 @@ og hvorfor andre mangler (fx for få brugere, eller at MealMind ikke registrerer
 |---|---|---|
 | Indhold | Syntetisk genererede brugere, måltider og køkkenskab – inkl. opfundne madspildsdata, så alle ML-funktioner kan afprøves | Kun felter MealMind faktisk registrerer, pseudonymiseret. **Ingen madspildsdata** |
 | Mærkat | DEMODATA/TESTDATA i sidebar, banner og hvert svar | Databricks / Udtræk |
-| ML i AIDA | Resultater markeres `data_warning` og `production_ready: false` | Ad hoc-analyser (`production_ready: false`); produktionsmodeller findes kun i `gold.ml_model_status` med `production_ready = true` |
+| ML i MealMind Insights | Resultater markeres `data_warning` og `production_ready: false` | Ad hoc-analyser (`production_ready: false`); produktionsmodeller findes kun i `gold.ml_model_status` med `production_ready = true` |
 | Brug | Udvikling og demo | Analyse af MealMind |
 
 Et Databricks-katalog eller udtræk, der er markeret som syntetisk, behandles som demodata. Modeller trænet i
@@ -92,7 +111,7 @@ scripts/test.sh
 Kører backend-tests (pytest: SQL-sikkerhed, read-only forbindelse, tools, ML, agent-loop, API, SDK-format,
 værktøjsvalg, Databricks med mocket SQL Warehouse – token og OAuth – samt lokalt udtræk),
 frontend-tests (vitest), lint, typecheck og produktionsbuild. En scriptet test-LLM
-(`ASSISTANT_TEST_MODE=1`) bruges til end-to-end-tests uden API-nøgle; den bruges aldrig i drift.
+(`INSIGHTS_TEST_MODE=1`, tidligere `ASSISTANT_TEST_MODE`) bruges til end-to-end-tests uden API-nøgle; den bruges aldrig i drift.
 
 ## Forbind til Azure Databricks
 
@@ -100,7 +119,7 @@ Pipelinen, der bygger tabellerne, ligger i `biteowl/data-platform` (eksport → 
 Hele opsætningen i Azure Portal og Databricks er beskrevet trin for trin i
 `biteowl/data-platform/docs/AZURE_SETUP.md`. Kort:
 
-1. Opret en service principal `mealmind-aida` med **kun læseadgang** (`USE CATALOG`, `USE SCHEMA`, `SELECT` på
+1. Opret en service principal `mealmind-insights` med **kun læseadgang** (`USE CATALOG`, `USE SCHEMA`, `SELECT` på
    `mealmind.silver` og `mealmind.gold`) og *Can use* på SQL Warehouse'et.
 2. Udfyld i `.env`:
    ```
@@ -116,7 +135,7 @@ Hele opsætningen i Azure Portal og Databricks er beskrevet trin for trin i
 3. Undersøg datasættene: `cd backend && .venv/bin/python -m app.inspect_data`.
 4. Genstart. Sidebaren viser **Databricks**.
 
-Ved opstart kontrollerer AIDA, at identiteten **kun kan læse** (ingen MODIFY/CREATE/ejerskab på kataloget) og
+Ved opstart kontrollerer MealMind Insights, at identiteten **kun kan læse** (ingen MODIFY/CREATE/ejerskab på kataloget) og
 nægter ellers at starte (`DATABRICKS_ENFORCE_READ_ONLY=true`). Manglende rettigheder, forkert host/HTTP path,
 udløbne credentials og manglende tabeller giver danske fejlbeskeder med løsning. Under udvikling kan
 `ALLOW_DEMO_FALLBACK=true` køre videre på demodata med en advarsel i UI'et – brug det ikke i drift.
@@ -139,7 +158,7 @@ DATA_SOURCE=local_export
 LOCAL_EXPORT_DIR=/sti/til/exports       # én batch-mappe eller en mappe med flere (nyeste bruges)
 ```
 
-AIDA kontrollerer manifestets checksummer og kvalitetsflag, indlæser Parquet-filerne i en read-only DuckDB og
+MealMind Insights kontrollerer manifestets checksummer og kvalitetsflag, indlæser Parquet-filerne i en read-only DuckDB og
 markerer data som testdata, hvis manifestet siger `contains_synthetic_data: true`. Udtræk må aldrig ligge i Git.
 
 ## Sikkerhed
@@ -181,3 +200,14 @@ backend/app/
   inspect_data.py  profilering af datasæt
 frontend/src/  React-chat, grafer (Recharts), tabeller, SSE-klient
 ```
+
+## Omdøbning fra AIDA
+
+| Før | Nu | Kompatibilitet |
+|---|---|---|
+| `ASSISTANT_TEST_MODE` | `INSIGHTS_TEST_MODE` | Begge læses |
+| Browser-token `mealmind-assistant-token` | `mealmind-insights-token` | Det gamle token læses og flyttes automatisk |
+| Service principal `mealmind-aida` | `mealmind-insights` | Rettigheder gives på Application ID, så en eksisterende principal virker uændret |
+| `10_grant_aida_readonly.sql` (biteowl) | `10_grant_insights_readonly.sql` | Den gamle fil henviser til den nye |
+| Docker Compose-tjenesten `assistant` | uændret | Eksisterende kommandoer virker |
+

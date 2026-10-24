@@ -1,0 +1,38 @@
+{
+  // Terminal → Run Task… (eller ⇧⌘P → "Tasks: Run Task"). Stop en kørende task med Ctrl+C eller papirkurven.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "MealMind: start lokalt analysemiljø",
+      "detail": "Appens database (biteowl-public DB_PATH) → Bronze/Silver/Gold + ML/MLflow (kun ved ændringer) → MLflow :5001 + Insights :8000",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/local.sh",
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "MealMind: start med demodata",
+      "detail": "Syntetiske DEMODATA i et separat lakehouse (mealmind_dev)",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/local.sh --demo",
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always" }
+    },
+    {
+      "label": "MealMind: genkør pipeline",
+      "detail": "Nyt udtræk + Bronze/Silver/Gold + ML, selv om kildedata er uændrede (ingen servere)",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/local.sh --refresh --pipeline-only",
+      "problemMatcher": []
+    },
+    {
+      "label": "MealMind: kør alle tests",
+      "detail": "MealMind Insights (backend, frontend, lint, typecheck, build) og data-platform",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/test.sh && ${workspaceFolder}/../biteowl-public/data-platform/scripts/test.sh",
+      "problemMatcher": [],
+      "group": "test"
+    }
+  ]
+}

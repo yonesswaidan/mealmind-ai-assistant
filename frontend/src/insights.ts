@@ -27,6 +27,13 @@ export const MODE_TEXT: Record<DataMode, { badge: string; origin: string; footer
   },
 }
 
+/** Hvor analysen er kørt - lokalt beregnede data må aldrig ligne en Azure Databricks-kørsel. */
+export function executionNote(health: Pick<Health, 'data_source' | 'execution_environment'> | null): string {
+  if (!health) return ''
+  if (health.execution_environment === 'databricks' || health.data_source === 'databricks') return 'Azure Databricks'
+  return health.data_source === 'local_lakehouse' ? 'Beregnet lokalt · ikke Azure Databricks' : 'Beregnet lokalt'
+}
+
 /** "Analyse: Prognose · Visualisering" - SQL nævnes kun, når det er det eneste værktøj. */
 export function planLabel(labels: string[] | undefined): string | null {
   if (!labels || labels.length === 0) return null

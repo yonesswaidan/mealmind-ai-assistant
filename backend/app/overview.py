@@ -1,7 +1,8 @@
 """Data til hjemmesidens overblik: datakilder, foreslåede spørgsmål og ML-status.
 
 Alt udledes af de tabeller og kolonner, der faktisk findes i datakilden, så forslagene passer til både
-demodata, et lokalt udtræk og Databricks. ML-status læses fra gold.ml_model_status, når den tabel findes.
+demodata, et lokalt udtræk og Databricks. ML-status læses fra gold.ml_model_status, når den tabel findes
+(trænet i Azure Databricks eller i det lokale lakehouse - kilden afgør, hvad der vises).
 """
 
 import logging
@@ -120,6 +121,8 @@ def _gold_status(source: DataSource) -> list[dict] | None:
     except (QueryError, UnsafeQueryError) as e:
         log.warning("ML-status kunne ikke læses: %s", e)
         return None
+    # Hvor modellerne er trænet: Azure Databricks eller det lokale lakehouse (aldrig gættet ud fra tabelnavnet).
+    trained_in = "databricks" if source.execution_environment == "databricks" else "local_lakehouse"
     out = []
     for r in df.to_dict(orient="records"):
         synthetic = str(r.get("data_origin", "")) == "synthetic" or source.is_demo
@@ -128,7 +131,7 @@ def _gold_status(source: DataSource) -> list[dict] | None:
         if status == "trained":
             label = "Demo" if synthetic else ("Klar" if r.get("production_ready") else "Afprøvning")
         out.append({"name": r.get("model_name"), "title": MODEL_TITLES.get(r.get("model_name"), r.get("model_name")),
-                    "status": status, "label": label, "detail": r.get("reason") or "", "source": "databricks"})
+                    "status": status, "label": label, "detail": r.get("reason") or "", "source": trained_in})
     return out
 
 
@@ -151,6 +154,7 @@ def build_overview(source: DataSource, registry: dict[str, MLFunction]) -> dict:
         "data_source": source.kind,
         "data_label": source.label,
         "demo": source.is_demo,
+        "execution_environment": source.execution_environment,
         "sources": sources(source),
         "quick_actions": chips,
         "next_questions": following,

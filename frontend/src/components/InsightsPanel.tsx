@@ -1,5 +1,5 @@
 import { MODE_TEXT, nf, type DataMode } from '../insights'
-import type { Overview, SourceInfo } from '../types'
+import type { MlStatus, Overview, SourceInfo } from '../types'
 import { IconBulb, IconChevron, IconNetwork, SourceIcon } from './Icons'
 
 function OriginDot({ mode }: { mode: DataMode }) {
@@ -55,6 +55,12 @@ export function NextQuestionsCard({ questions, onAsk, disabled }: { questions: s
   )
 }
 
+const ML_SOURCE_TEXT: Record<MlStatus['source'], string> = {
+  databricks: 'Trænet i Databricks',
+  local_lakehouse: 'Trænet lokalt · MLflow',
+  local: 'Beregnes på forespørgsel',
+}
+
 export function MlStatusCard({ overview }: { overview: Overview | null }) {
   const items = overview?.ml_status ?? []
   return (
@@ -67,7 +73,7 @@ export function MlStatusCard({ overview }: { overview: Overview | null }) {
             <span className="round-icon"><IconNetwork /></span>
             <span className="ml-text">
               <span className="ml-title">{m.title}</span>
-              <span className="ml-detail">{m.source === 'databricks' ? 'Trænet i Databricks' : 'Beregnes på forespørgsel'}</span>
+              <span className="ml-detail">{ML_SOURCE_TEXT[m.source] ?? ML_SOURCE_TEXT.local}</span>
             </span>
             <span className={`pill pill-${m.label === 'Klar' ? 'ok' : m.label === 'Demo' ? 'demo' : 'neutral'}`}>{m.label}</span>
           </li>

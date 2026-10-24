@@ -1,0 +1,436 @@
+{
+  "batch_id": "20261020T120000Z",
+  "kind": "mealmind_local_lakehouse",
+  "publish_id": "20261024T170231992172Z",
+  "snapshot_at": "2026-10-20T12:00:00+00:00",
+  "published_at": "2026-10-24T17:02:31.992172+00:00",
+  "contract_version": "1.0.0",
+  "contains_synthetic_data": true,
+  "quality_ok": true,
+  "execution": {
+    "environment": "local",
+    "engine": "delta-rs",
+    "description": "TESTFIXTURE - beregnet lokalt.",
+    "mlflow_experiment": null,
+    "trained_at": "2026-10-20T12:00:00+00:00",
+    "catalog": "mealmind_dev"
+  },
+  "datasets": {
+    "meal_events": {
+      "file": "meal_events.parquet",
+      "layer": "silver",
+      "rows": 10,
+      "description": "SYNTETISKE TESTDATA - ikke rigtige brugere. Måltidshændelser fra MealMind: én række pr. planlagt måltid i madplanen (calendar_days) og pr. manuelt registreret måltid (food_log, undtagen kalender-kopier). Brugere er pseudonymiseret. Der findes ingen historik over ændringer i appen; silver-tabellen viser seneste version.",
+      "columns": [
+        {
+          "name": "event_id",
+          "type": "string",
+          "description": "Stabil pseudonym nøgle for hændelsen (HMAC af kilde-id)."
+        },
+        {
+          "name": "user_key",
+          "type": "string",
+          "description": "Pseudonym bruger-id (HMAC-SHA256). Kan ikke føres tilbage uden nøglen."
+        },
+        {
+          "name": "event_date",
+          "type": "date",
+          "description": "Dato for måltidet."
+        },
+        {
+          "name": "meal_slot",
+          "type": "string",
+          "description": "Måltidstype."
+        },
+        {
+          "name": "event_source",
+          "type": "string",
+          "description": "meal_plan = planlagt i madplanen; food_log = manuelt/stregkode-registreret i madloggen."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "description": "planned/eaten/skipped for madplan-måltider (brugerens markering); logged for madlog."
+        },
+        {
+          "name": "meal_name",
+          "type": "string",
+          "description": "Rettens navn (fritekst renset for e-mail/telefonnumre)."
+        },
+        {
+          "name": "calories_kcal",
+          "type": "double",
+          "description": "Kalorier pr. portion (se nutrition_basis)."
+        },
+        {
+          "name": "protein_g",
+          "type": "double",
+          "description": "Protein i gram pr. portion."
+        },
+        {
+          "name": "carbs_g",
+          "type": "double",
+          "description": "Kulhydrat i gram pr. portion."
+        },
+        {
+          "name": "fat_g",
+          "type": "double",
+          "description": "Fedt i gram pr. portion."
+        },
+        {
+          "name": "fiber_g",
+          "type": "double",
+          "description": "Kostfibre i gram pr. portion (kun fra beregnede opskrifter)."
+        },
+        {
+          "name": "nutrition_basis",
+          "type": "string",
+          "description": "recipe = beregnet fra opskriftens ingredienser; day_plan_estimate = dagens AI-estimat delt ligeligt på hovedmåltider (samme logik som appen); logged = brugerens egne tal; none = ingen næringsdata."
+        },
+        {
+          "name": "servings",
+          "type": "int",
+          "description": "Antal portioner i opskriften."
+        },
+        {
+          "name": "prep_time_min",
+          "type": "int",
+          "description": "Forberedelsestid i minutter."
+        },
+        {
+          "name": "cook_time_min",
+          "type": "int",
+          "description": "Tilberedningstid i minutter."
+        },
+        {
+          "name": "ingredient_count",
+          "type": "int",
+          "description": "Antal ingredienser i opskriften."
+        },
+        {
+          "name": "recipe_price_dkk",
+          "type": "double",
+          "description": "Opskriftens estimerede pris i DKK."
+        },
+        {
+          "name": "day_plan_cost_dkk",
+          "type": "double",
+          "description": "Hele dagens estimerede madplanspris i DKK (gentages på dagens måltider - summér ikke pr. måltid)."
+        },
+        {
+          "name": "recipe_origin",
+          "type": "string",
+          "description": "Opskriftens oprindelse i appen (fx ai)."
+        },
+        {
+          "name": "recipe_ai_generated",
+          "type": "boolean",
+          "description": "Om opskriften er AI-genereret."
+        },
+        {
+          "name": "log_source",
+          "type": "string",
+          "description": "Madlogkilde (manual, barcode, ...). Tom for madplan-måltider."
+        },
+        {
+          "name": "is_favorite",
+          "type": "boolean",
+          "description": "Om brugeren har retten som favorit."
+        },
+        {
+          "name": "rating",
+          "type": "int",
+          "description": "Brugerens seneste vurdering 1-5 af retten (meal_ratings)."
+        },
+        {
+          "name": "source_created_at",
+          "type": "timestamp",
+          "description": "Hvornår rækken blev oprettet i appen (madlog) eller dagens plan blev genereret (madplan)."
+        },
+        {
+          "name": "snapshot_at",
+          "type": "timestamp",
+          "description": "Tidspunkt for dataudtrækket."
+        },
+        {
+          "name": "is_current",
+          "type": "boolean",
+          "description": "true = rækken findes i seneste fulde udtræk; false = slettet/erstattet i appen siden. Filtrér normalt på is_current = true."
+        },
+        {
+          "name": "first_seen_at",
+          "type": "timestamp",
+          "description": "Udtrækstidspunkt hvor rækken første gang blev set."
+        },
+        {
+          "name": "last_seen_at",
+          "type": "timestamp",
+          "description": "Seneste udtrækstidspunkt hvor rækken fandtes."
+        },
+        {
+          "name": "last_batch_id",
+          "type": "string",
+          "description": "Seneste batch der indeholdt rækken."
+        }
+      ],
+      "sha256": "31864361a1cceffd862db9036288aa6f7fd60347252dd43332db284c2f5f7f81"
+    },
+    "shopping_food_items": {
+      "file": "shopping_food_items.parquet",
+      "layer": "silver",
+      "rows": 6,
+      "description": "SYNTETISKE TESTDATA - ikke rigtige brugere. Indkøbs- og madvaredata fra MealMind: varer på ugentlige indkøbslister (calendar_shopping_items) og varer i brugerens køkkenskab (pantry_items) med udløbsdato. Brugere er pseudonymiseret. MealMind registrerer IKKE madspild, køb eller kvitteringer: udløbne varer er en risikoindikator, ikke spild.",
+      "columns": [
+        {
+          "name": "record_id",
+          "type": "string",
+          "description": "Stabil pseudonym nøgle for varen."
+        },
+        {
+          "name": "user_key",
+          "type": "string",
+          "description": "Pseudonym bruger-id (samme nøgle som i meal_events)."
+        },
+        {
+          "name": "record_type",
+          "type": "string",
+          "description": "shopping_list_item = vare på indkøbsliste; pantry_item = vare i køkkenskabet."
+        },
+        {
+          "name": "item_name",
+          "type": "string",
+          "description": "Varenavn (normaliseret til små bogstaver)."
+        },
+        {
+          "name": "product_name",
+          "type": "string",
+          "description": "Matchet butiksprodukt for indkøbslistevaren."
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "description": "Varekategori fra appen (fx dairy, vegetables, other)."
+        },
+        {
+          "name": "quantity_text",
+          "type": "string",
+          "description": "Mængde som registreret i appen (tekst)."
+        },
+        {
+          "name": "quantity_value",
+          "type": "double",
+          "description": "Mængde som tal, når teksten kan fortolkes."
+        },
+        {
+          "name": "unit",
+          "type": "string",
+          "description": "Enhed (g, ml, stk, ...)."
+        },
+        {
+          "name": "estimated_price_dkk",
+          "type": "double",
+          "description": "Appens estimerede pris i DKK."
+        },
+        {
+          "name": "offer_price_dkk",
+          "type": "double",
+          "description": "Live-/tilbudspris fundet hos en butik i DKK."
+        },
+        {
+          "name": "offer_store",
+          "type": "string",
+          "description": "Butikken bag live-/tilbudsprisen."
+        },
+        {
+          "name": "checked",
+          "type": "boolean",
+          "description": "Afkrydset på indkøbslisten (ikke nødvendigvis købt)."
+        },
+        {
+          "name": "week_start",
+          "type": "date",
+          "description": "Indkøbslistens uge (mandag)."
+        },
+        {
+          "name": "list_generated_at",
+          "type": "timestamp",
+          "description": "Hvornår indkøbslisten blev genereret."
+        },
+        {
+          "name": "added_at",
+          "type": "timestamp",
+          "description": "Hvornår varen blev lagt i køkkenskabet."
+        },
+        {
+          "name": "expiry_date",
+          "type": "date",
+          "description": "Udløbsdato angivet af brugeren (køkkenskab)."
+        },
+        {
+          "name": "days_to_expiry",
+          "type": "int",
+          "description": "Dage fra udtræksdato til udløb (negativ = udløbet)."
+        },
+        {
+          "name": "expiry_status",
+          "type": "string",
+          "description": "expired / expires_within_7d / ok / no_expiry_date for køkkenskab; not_applicable for indkøbslister. Beregnet på udtræksdatoen."
+        },
+        {
+          "name": "reference_price_dkk",
+          "type": "double",
+          "description": "Referencepris fra appens ingredienstabel."
+        },
+        {
+          "name": "reference_category",
+          "type": "string",
+          "description": "Kategori fra appens ingredienstabel."
+        },
+        {
+          "name": "preferred_store_chain",
+          "type": "string",
+          "description": "Brugerens foretrukne butikskæde (ikke adresse)."
+        },
+        {
+          "name": "snapshot_at",
+          "type": "timestamp",
+          "description": "Tidspunkt for dataudtrækket."
+        },
+        {
+          "name": "is_current",
+          "type": "boolean",
+          "description": "true = rækken findes i seneste fulde udtræk; false = slettet/erstattet i appen siden. Filtrér normalt på is_current = true."
+        },
+        {
+          "name": "first_seen_at",
+          "type": "timestamp",
+          "description": "Udtrækstidspunkt hvor rækken første gang blev set."
+        },
+        {
+          "name": "last_seen_at",
+          "type": "timestamp",
+          "description": "Seneste udtrækstidspunkt hvor rækken fandtes."
+        },
+        {
+          "name": "last_batch_id",
+          "type": "string",
+          "description": "Seneste batch der indeholdt rækken."
+        }
+      ],
+      "sha256": "f34b4e5f05615434bb916b3d997fa5bd6f9ce5d61fa0f351a21dd6547e7bf46e"
+    },
+    "ml_model_status": {
+      "file": "ml_model_status.parquet",
+      "layer": "gold",
+      "rows": 6,
+      "description": "SYNTETISKE TESTDATA - ikke rigtige brugere, ikke produktionsklart. Status for MealMinds ML-modeller: trained, insufficient_data (for lidt data), insufficient_signal (intet brugbart mønster), not_available (data registreres ikke) eller ready_on_demand. reason forklarer hvorfor på dansk; metrics_json indeholder evalueringen. data_origin = real/synthetic; kun production_ready = true må kaldes produktionsklar.",
+      "columns": [
+        {
+          "name": "model_name",
+          "type": "string",
+          "description": ""
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "description": ""
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "description": ""
+        },
+        {
+          "name": "method",
+          "type": "string",
+          "description": ""
+        },
+        {
+          "name": "rows_used",
+          "type": "int",
+          "description": ""
+        },
+        {
+          "name": "metrics_json",
+          "type": "string",
+          "description": ""
+        },
+        {
+          "name": "output_tables",
+          "type": "string",
+          "description": ""
+        },
+        {
+          "name": "data_origin",
+          "type": "string",
+          "description": ""
+        },
+        {
+          "name": "production_ready",
+          "type": "boolean",
+          "description": ""
+        },
+        {
+          "name": "trained_at",
+          "type": "timestamp",
+          "description": ""
+        },
+        {
+          "name": "mlflow_run_id",
+          "type": "string",
+          "description": ""
+        },
+        {
+          "name": "registered_model",
+          "type": "string",
+          "description": ""
+        },
+        {
+          "name": "execution_environment",
+          "type": "string",
+          "description": "Hvor modellen er trænet: local = lokalt på denne computer (ikke Azure Databricks)."
+        }
+      ],
+      "sha256": "5d4e4db8568db8645fa09f24b2ecf0f573561d0814cee79648981dafd564dd90"
+    },
+    "meal_similarity": {
+      "file": "meal_similarity.parquet",
+      "layer": "gold",
+      "rows": 50,
+      "description": "SYNTETISKE TESTDATA - ikke rigtige brugere, ikke produktionsklart. Retter der ligner hinanden (similarity search: navn, måltidstype og næring). similarity 0-1, rank 1 = mest lignende. Model: meal_similarity.",
+      "columns": [
+        {
+          "name": "meal_name",
+          "type": "string",
+          "description": ""
+        },
+        {
+          "name": "similar_meal_name",
+          "type": "string",
+          "description": ""
+        },
+        {
+          "name": "similarity",
+          "type": "double",
+          "description": ""
+        },
+        {
+          "name": "rank",
+          "type": "int",
+          "description": ""
+        },
+        {
+          "name": "meal_slot",
+          "type": "string",
+          "description": ""
+        },
+        {
+          "name": "similar_meal_slot",
+          "type": "string",
+          "description": ""
+        }
+      ],
+      "sha256": "0daf81ca3e8b2fbc6be54db29e7f6455a792d453d8f001345d0fa92a22743dfe"
+    }
+  }
+}

@@ -39,6 +39,14 @@ def open_source(settings: Settings) -> tuple[DataSource, dict]:
     return source, status
 
 
+def _execution_info(source: DataSource) -> dict | None:
+    """Hvor et lokalt lakehouse er beregnet (motor, MLflow-eksperiment, tidspunkt). Ingen stier eller nøgler."""
+    execution = getattr(source, "execution", None) or {}
+    if not execution:
+        return None
+    return {k: execution.get(k) for k in ("environment", "engine", "description", "mlflow_experiment", "trained_at")}
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
 
@@ -112,6 +120,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "data_source": deps.source.kind,
             "data_label": deps.source.label,
             "demo": deps.source.is_demo,
+            "execution_environment": deps.source.execution_environment,
+            "execution": _execution_info(deps.source),
             "llm_configured": settings.assistant_test_mode or credentials_available(settings),
             "provider": "test" if settings.assistant_test_mode else settings.ai_provider,
             "model": "scripted-test" if settings.assistant_test_mode else settings.llm_model,

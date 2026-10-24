@@ -12,7 +12,7 @@ Datakilder (`DATA_SOURCE`):
 | Værdi | Data | Mærkat i UI |
 |---|---|---|
 | `demo` (standard) | To syntetiske demodatasæt i lokal DuckDB | Demotilstand |
-| `local_export` | Et pseudonymiseret udtræk fra `biteowl/data-platform` – rigtige data eller syntetisk demo-udtræk | Rigtige data / Testdata |
+| `local_export` | Et pseudonymiseret udtræk fra `biteowl/data-platform` – rigtige data eller syntetisk demo-udtræk. Er det et serving-udtræk fra det **lokale lakehouse**, følger Gold/ML-tabeller med, og kilden vises som `local_lakehouse` | Rigtige data / Testdata · "Beregnet lokalt" |
 | `databricks` | MealMinds Silver/Gold-tabeller i Azure Databricks via SQL Warehouse | Rigtige data / Testdata (`mealmind_dev`) |
 
 Syntetiske data vises altid som DEMODATA/TESTDATA – også hvis et Databricks-katalog eller udtræk er markeret
@@ -89,6 +89,33 @@ og hvorfor andre mangler (fx for få brugere, eller at MealMind ikke registrerer
 
 Et Databricks-katalog eller udtræk, der er markeret som syntetisk, behandles som demodata. Modeller trænet i
 Databricks på syntetiske data får `data_origin = synthetic`, er aldrig `production_ready` og registreres ikke.
+
+## Lokalt analysemiljø uden Azure (én kommando)
+
+```bash
+scripts/local.sh            # appens egen database (biteowl-public/backend/.env DB_PATH) - i dag udviklingsdata
+scripts/local.sh --demo     # syntetiske demodata i et separat lakehouse
+```
+
+I VS Code: **Terminal → Run Task… → "MealMind: start lokalt analysemiljø"** (standard build-task, ⇧⌘B).
+
+Kommandoen
+1. tager et read-only snapshot af MealMind-databasen og laver et pseudonymiseret udtræk med `biteowl/data-platform`,
+2. bygger **Bronze/Silver/Gold** som Delta Lake-tabeller lokalt (delta-rs – ingen Java/Spark/cluster), træner
+   MealMinds ML-modeller og logger dem i **lokal MLflow** – kun hvis kildedata er ændret siden sidst (`--refresh` tvinger),
+3. starter **MLflow UI** på http://localhost:5001 og **MealMind Insights** på http://localhost:8000 med Silver- og
+   Gold-tabellerne som datakilde.
+
+`.env`: `MEALMIND_SOURCE_DB` (tom = følg appens `DB_PATH`; ellers SQLite-fil eller `postgresql://`-URL),
+`MEALMIND_SOURCE_ORIGIN` (`synthetic` = udviklingsdatabase/testbrugere, lakehouse `mealmind_devdb`, altid markeret
+syntetisk; `real` = rigtige brugerdata), `MEALMIND_DATA_PLATFORM` (standard
+`../biteowl-public/data-platform`), `MLFLOW_PORT`. `DATA_SOURCE`/`DATABRICKS_*` i `.env` ændres ikke – skiftet til
+Azure Databricks er stadig kun `DATA_SOURCE=databricks` + `scripts/start.sh`.
+
+Alt mærkes som **beregnet lokalt – ikke Azure Databricks** (API: `execution_environment = local`, UI-fodnote,
+ML-status "Trænet lokalt · MLflow", AI'ens systemprompt og kolonnen `ml_model_status.execution_environment`).
+Valgfrit: `--engine spark` kører Databricks-pipelinens egen Spark-kode lokalt (kræver Java 17+).
+Detaljer: `biteowl/data-platform/docs/LOCAL.md`.
 
 ## Kom i gang lokalt
 

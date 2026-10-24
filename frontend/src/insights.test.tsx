@@ -4,7 +4,7 @@ import { getToken } from './api'
 import { InsightsPanel } from './components/InsightsPanel'
 import { MessageView } from './components/MessageView'
 import { loadConversations, saveConversation } from './conversations'
-import { conversationTitle, dataMode, MODE_TEXT, planLabel, tableToChart } from './insights'
+import { conversationTitle, dataMode, executionNote, MODE_TEXT, planLabel, tableToChart } from './insights'
 import type { AssistantMessage, Message, Overview, TableSpec } from './types'
 
 const table: TableSpec = {
@@ -31,6 +31,14 @@ describe('datatilstand', () => {
     expect(dataMode(null)).toBeNull()
     expect(MODE_TEXT.demo.badge).toBe('Demotilstand')
     expect(MODE_TEXT.real.footer).toContain('Pseudonymiserede')
+  })
+
+  it('lokalt beregnede data præsenteres aldrig som Azure Databricks', () => {
+    expect(executionNote({ data_source: 'local_lakehouse', execution_environment: 'local' }))
+      .toBe('Beregnet lokalt · ikke Azure Databricks')
+    expect(executionNote({ data_source: 'databricks', execution_environment: 'databricks' })).toBe('Azure Databricks')
+    expect(executionNote({ data_source: 'demo' })).toBe('Beregnet lokalt')
+    expect(executionNote(null)).toBe('')
   })
 })
 
@@ -106,6 +114,15 @@ describe('brugerflade', () => {
     render(<InsightsPanel overview={overview(false)} mode="real" questions={[]} onAsk={() => {}} onOpenSource={() => {}} busy={false} />)
     expect(screen.getAllByText('Rigtige data')).toHaveLength(2)
     expect(screen.getByText('Klar')).toBeInTheDocument()
+    expect(screen.getByText('Trænet i Databricks')).toBeInTheDocument()
+  })
+
+  it('modeller fra det lokale lakehouse vises som trænet lokalt', () => {
+    const local: Overview = { ...overview(false), data_source: 'local_lakehouse',
+      ml_status: [{ ...overview(false).ml_status[0], source: 'local_lakehouse' }] }
+    render(<InsightsPanel overview={local} mode="real" questions={[]} onAsk={() => {}} onOpenSource={() => {}} busy={false} />)
+    expect(screen.getByText('Trænet lokalt · MLflow')).toBeInTheDocument()
+    expect(screen.queryByText('Trænet i Databricks')).toBeNull()
   })
 
   it('svarkortet viser analysetype, datagrundlag og kan vise tabellen som graf', () => {

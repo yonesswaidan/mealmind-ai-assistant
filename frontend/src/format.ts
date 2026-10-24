@@ -26,5 +26,6 @@ export function toCsv(columns: string[], rows: Record<string, Cell>[]): string {
 /** Mærkat for datakilden. Syntetiske data (demo eller testkatalog) vises aldrig som rigtige data. */
 export function sourceBadge(health: { demo: boolean; data_source: string }): string {
   if (health.demo) return health.data_source === 'demo' ? 'DEMODATA' : 'TESTDATA'
-  return health.data_source === 'databricks' ? 'Databricks' : 'Udtræk'
+  if (health.data_source === 'databricks') return 'Databricks'
+  return health.data_source === 'local_lakehouse' ? 'Lokalt' : 'Udtræk'
 }

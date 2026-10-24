@@ -98,6 +98,9 @@ export interface Health {
   data_source: string
   data_label?: string
   demo: boolean
+  /** Hvor data og ML er beregnet: 'local' (denne computer) eller 'databricks'. */
+  execution_environment?: 'local' | 'databricks'
+  execution?: { environment: string; engine: string; description: string; mlflow_experiment: string | null; trained_at: string } | null
   llm_configured: boolean
   provider: 'openai' | 'anthropic' | 'test'
   model: string
@@ -128,7 +131,7 @@ export interface MlStatus {
   status: string
   label: string
   detail: string
-  source: 'databricks' | 'local'
+  source: 'databricks' | 'local_lakehouse' | 'local'
 }
 
 export interface Overview {

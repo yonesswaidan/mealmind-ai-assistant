@@ -27,6 +27,10 @@ def build_system_prompt(source: DataSource) -> str:
             "VIGTIGT: Tabellerne er DEMODATA/SYNTETISKE TESTDATA - genereret til afprøvning, ikke rigtige "
             "MealMind-brugere. Nævn det kort i hvert svar, og præsentér aldrig tallene som virkelige."
         )
+    elif source.kind == "local_lakehouse":
+        data_note = ("Datakilden er MealMinds lokale lakehouse: Silver- og Gold-tabeller bygget på denne computer ud "
+                     "fra et pseudonymiseret udtræk af MealMinds rigtige data (kun læseadgang). Brugere kendes kun "
+                     "som pseudonyme user_key'er.")
     elif source.kind == "local_export":
         data_note = ("Datakilden er et godkendt, pseudonymiseret udtræk af MealMinds rigtige data (lokal kopi, kun "
                      "læseadgang). Brugere kendes kun som pseudonyme user_key'er.")
@@ -34,10 +38,20 @@ def build_system_prompt(source: DataSource) -> str:
         data_note = ("Datakilden er MealMinds Azure Databricks SQL Warehouse med pseudonymiserede rigtige data "
                      "(kun læseadgang). Brugere kendes kun som pseudonyme user_key'er.")
 
+    if source.execution_environment == "databricks":
+        where = "Azure Databricks"
+        execution_note = ""
+    else:
+        where = "det lokale lakehouse (logget i lokal MLflow)" if source.kind == "local_lakehouse" else "lokalt"
+        execution_note = ("\n\nKØRSELSMILJØ: Alt kører lokalt på denne computer (DuckDB" +
+                          (", Delta Lake-pipeline og lokal MLflow" if source.kind == "local_lakehouse" else "") +
+                          "). Intet er kørt i Azure Databricks - skriv aldrig, at data, SQL, analyser eller "
+                          "ML-modeller er kørt i eller kommer fra Databricks.")
+
     return f"""Du er MealMind Insights, MealMinds dataassistent. MealMind er en app til madplaner, indkøb, køkkenskab og madspild. \
 Du besvarer spørgsmål om MealMind ved at undersøge data med dine værktøjer.
 
-{data_note}
+{data_note}{execution_note}
 
 SQL-dialekt: {source.dialect}. Tilgængelige tabeller (brug præcis disse navne):
 
@@ -57,7 +71,7 @@ eller sandsynligheder. Brugerens besked kan indeholde et systemhint med en forel
 udgangspunkt, ikke som facit.
 - Træn aldrig en model på for få rækker for at kunne give et svar. Afviser en ML-funktion data som utilstrækkelige, \
 så forklar begrænsningen i stedet for at gætte.
-- Findes tabellen ml_model_status, beskriver den modellerne trænet i Databricks (status og årsag). Brug dens \
+- Findes tabellen ml_model_status, beskriver den modellerne trænet i {where} (status og årsag). Brug dens \
 reason-kolonne til at forklare, hvorfor en model ikke er tilgængelig, og output-tabellerne (fx meal_similarity) \
 når en model er trænet.
 - ML-resultater fra run_ml er ad hoc-analyser på de hentede rækker, ikke produktionsmodeller. Kald kun en model \

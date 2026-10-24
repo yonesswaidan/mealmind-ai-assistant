@@ -46,6 +46,8 @@ class DataSource(Protocol):
     dialect: str
     is_demo: bool
     label: str
+    # Hvor data og ML-resultater er beregnet: "local" (denne computer) eller "databricks" (Azure Databricks).
+    execution_environment: str
 
     def tables(self) -> list[TableInfo]: ...
     def run(self, query: ValidatedQuery) -> pd.DataFrame: ...
@@ -98,6 +100,7 @@ class DuckDBSource:
     dialect = "duckdb"
     is_demo = True
     label = "DEMODATA (syntetiske)"
+    execution_environment = "local"
 
     def __init__(self, path: Path, timeout_seconds: float):
         self.path = path
@@ -159,6 +162,7 @@ class DatabricksSource:
     kind = "databricks"
     dialect = "databricks"
     label = "Azure Databricks"
+    execution_environment = "databricks"
 
     def __init__(self, settings: Settings):
         if not (settings.databricks_server_hostname and settings.databricks_http_path):
@@ -308,12 +312,25 @@ def _sql_literal(text: str) -> str:
     return "'" + text.replace("'", "''") + "'"
 
 
+LOCAL_LAKEHOUSE_KIND = "mealmind_local_lakehouse"
+
+
+def _prune_cache(cache_dir: Path, keep: Path, max_files: int = 3) -> None:
+    """Fjerner ældre DuckDB-cachefiler for udtræk (afledte kopier - kan altid genskabes fra udtrækket)."""
+    files = sorted((p for p in cache_dir.glob("export_*.duckdb") if p != keep),
+                   key=lambda p: p.stat().st_mtime, reverse=True)
+    for old in files[max_files - 1:]:
+        old.unlink(missing_ok=True)
+
+
 def resolve_export_batch(path: Path) -> Path:
     """En udtræksmappe eller en mappe med flere udtræk (det nyeste batch_id vælges)."""
     path = Path(path)
     if (path / "manifest.json").is_file():
         return path
-    batches = sorted(p for p in path.iterdir() if p.is_dir() and (p / "manifest.json").is_file()) \
+    # Mapper der starter med "." er halvfærdige udtræk, som endnu ikke er publiceret.
+    batches = sorted(p for p in path.iterdir()
+                     if p.is_dir() and not p.name.startswith(".") and (p / "manifest.json").is_file()) \
         if path.is_dir() else []
     if not batches:
         raise ValueError(f"Intet MealMind-udtræk (manifest.json) fundet i {path}.")
@@ -338,34 +355,57 @@ def load_export_manifest(batch: Path) -> dict:
 class LocalExportSource(DuckDBSource):
     """Et godkendt, pseudonymiseret MealMind-udtræk (fra biteowl/data-platform) indlæst i en read-only DuckDB.
 
-    Bruges til at analysere rigtige data, før Azure Databricks er sat op, eller offline.
+    Bruges til at analysere rigtige data, før Azure Databricks er sat op, eller offline. Er udtrækket et
+    serving-udtræk fra det lokale lakehouse (`python -m mealmind_data local`), indeholder det også Gold-tabeller
+    med ML-resultater, og kilden hedder `local_lakehouse` - alt er beregnet lokalt, ikke i Azure Databricks.
     """
 
     kind = "local_export"
+    execution_environment = "local"
 
     def __init__(self, export_dir: Path, cache_dir: Path, timeout_seconds: float):
         batch = resolve_export_batch(export_dir)
         self.manifest = load_export_manifest(batch)
         self.is_demo = bool(self.manifest.get("contains_synthetic_data"))
-        self.label = "Syntetisk testudtræk" if self.is_demo else f"Lokalt MealMind-udtræk {self.manifest['batch_id']}"
+        self.execution: dict = self.manifest.get("execution") or {}
+        batch_id = self.manifest["batch_id"]
+        if self.manifest.get("kind") == LOCAL_LAKEHOUSE_KIND:
+            self.kind = "local_lakehouse"
+            self.label = ("Syntetiske testdata · lokalt lakehouse" if self.is_demo else
+                          f"Lokalt lakehouse · MealMind-udtræk {batch_id}")
+        else:
+            self.label = "Syntetisk testudtræk" if self.is_demo else f"Lokalt MealMind-udtræk {batch_id}"
         digest = hashlib.sha256(json.dumps(self.manifest, sort_keys=True).encode()).hexdigest()[:12]
-        db_path = Path(cache_dir) / f"export_{self.manifest['batch_id']}_{digest}.duckdb"
+        db_path = Path(cache_dir) / f"export_{batch_id}_{digest}.duckdb"
         if not db_path.exists():
             self._build(batch, db_path)
+            _prune_cache(Path(cache_dir), keep=db_path)
         super().__init__(db_path, timeout_seconds)
+
+    def _comment(self, info: dict) -> str:
+        description = info.get("description", "")
+        batch_id = self.manifest["batch_id"]
+        synthetic = "SYNTETISKE TESTDATA - ikke rigtige brugere. "
+        if self.kind == "local_lakehouse":
+            # Syntetisk-markeringen skal stå først: is_demo-detektion og UI læser præfikset.
+            if self.is_demo and not description.upper().startswith(SYNTHETIC_PREFIXES):
+                description = synthetic + description
+            layer = str(info.get("layer", "")).capitalize() or "Tabel"
+            return (f"{description} [{layer} i det lokale lakehouse, udtræk {batch_id}; pseudonymiseret, kun "
+                    "læseadgang; beregnet lokalt - ikke i Azure Databricks.]")
+        prefix = synthetic if self.is_demo else f"MealMind-udtræk {batch_id} (pseudonymiseret, kun læseadgang). "
+        return prefix + description
 
     def _build(self, batch: Path, db_path: Path) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = db_path.with_suffix(".tmp")
         tmp.unlink(missing_ok=True)
-        prefix = ("SYNTETISKE TESTDATA - ikke rigtige brugere. " if self.is_demo else
-                  f"MealMind-udtræk {self.manifest['batch_id']} (pseudonymiseret, kun læseadgang). ")
         con = duckdb.connect(str(tmp))
         try:
             for name, info in self.manifest["datasets"].items():
                 path = str((batch / info["file"]).resolve())
                 con.execute(f'CREATE TABLE "{name}" AS SELECT * FROM read_parquet({_sql_literal(path)})')
-                con.execute(f'COMMENT ON TABLE "{name}" IS {_sql_literal(prefix + info.get("description", ""))}')
+                con.execute(f'COMMENT ON TABLE "{name}" IS {_sql_literal(self._comment(info))}')
                 existing = {r[0] for r in con.execute(f'DESCRIBE "{name}"').fetchall()}
                 for col in info.get("columns", []):
                     if col["name"] in existing and col.get("description"):

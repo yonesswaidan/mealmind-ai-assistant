@@ -1,6 +1,7 @@
 """Profilér de konfigurerede datasæt: `python -m app.inspect_data` (bruger DATA_SOURCE fra .env).
 
-Bruges til at undersøge de rigtige Databricks-datasæt, så snart adgangen er sat op.
+Bruges til at undersøge de rigtige datasæt - lokalt (DATA_SOURCE=local_export, fx det lokale lakehouse) eller i
+Databricks, så snart adgangen er sat op.
 """
 
 import sys
@@ -20,7 +21,8 @@ def main() -> int:
         return 1
 
     q = '"' if source.dialect == "duckdb" else "`"
-    print(f"Datakilde: {source.kind}{' (DEMODATA)' if source.is_demo else ''}\n")
+    where = "Azure Databricks" if source.execution_environment == "databricks" else "lokalt (ikke Azure Databricks)"
+    print(f"Datakilde: {source.kind}{' (DEMODATA)' if source.is_demo else ''} · {source.label} · beregnet {where}\n")
     for t in tables:
         print(f"== {t.name} ({t.row_count} rækker)")
         if t.description:

@@ -6,7 +6,7 @@ import { MessageView } from './components/MessageView'
 import { NavSidebar, type View } from './components/NavSidebar'
 import { AnalysesView, Hero, OverviewView, QuickActions, SourcesView } from './components/Views'
 import { loadConversations, saveConversation, type StoredConversation } from './conversations'
-import { MODE_TEXT, dataMode } from './insights'
+import { MODE_TEXT, dataMode, executionNote } from './insights'
 import { applyEvent } from './reducer'
 import type { AssistantMessage, DatasetsResponse, Health, Message, Overview, SourceInfo } from './types'
 
@@ -194,7 +194,7 @@ export default function App() {
           <aside className="side" aria-label="Datakilder og ML-status">
             <InsightsPanel overview={overview} mode={mode} questions={nextQuestions} onAsk={(q) => void send(q)}
               onOpenSource={openSource} busy={busy || needToken} />
-            {mode && <p className="side-foot">{MODE_TEXT[mode].footer}</p>}
+            {mode && <p className="side-foot">{MODE_TEXT[mode].footer} · {executionNote(health)}</p>}
           </aside>
         </div>
       </div>

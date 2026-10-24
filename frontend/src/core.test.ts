@@ -60,6 +60,8 @@ describe('sourceBadge', () => {
     expect(sourceBadge({ demo: true, data_source: 'databricks' })).toBe('TESTDATA')
     expect(sourceBadge({ demo: false, data_source: 'databricks' })).toBe('Databricks')
     expect(sourceBadge({ demo: false, data_source: 'local_export' })).toBe('Udtræk')
+    expect(sourceBadge({ demo: false, data_source: 'local_lakehouse' })).toBe('Lokalt')
+    expect(sourceBadge({ demo: true, data_source: 'local_lakehouse' })).toBe('TESTDATA')
   })
 })
 

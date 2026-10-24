@@ -101,5 +101,5 @@ def plan_question(question: str, available_ml: list[str] | None = None) -> Analy
                      "(fx en status/hændelse for 'smidt ud'). Udløbsdatoer er ikke spild. Mangler data, så sig det, "
                      "og opfind ikke tal.")
     if "classification" in caps or "segmentation" in caps:
-        notes.append("Tjek om tabellen ml_model_status findes; den forklarer hvilke modeller Databricks har trænet.")
+        notes.append("Tjek om tabellen ml_model_status findes; den forklarer hvilke modeller der er trænet (lokalt eller i Databricks - se systemprompten).")
     return AnalysisPlan(caps, ml, notes)

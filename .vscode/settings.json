@@ -1,0 +1,6 @@
+{
+  // Automatisk venv-aktivering sender Ctrl+C til nye terminaler og afbryder scripts/local.sh.
+  // Scripts bruger selv de rigtige virtuelle miljøer, så aktivering er ikke nødvendig.
+  "python-envs.terminal.autoActivationType": "off",
+  "python.terminal.activateEnvironment": false
+}

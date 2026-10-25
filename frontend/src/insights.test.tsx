@@ -1,8 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getToken } from './api'
-import { InsightsPanel } from './components/InsightsPanel'
 import { MessageView } from './components/MessageView'
+import { NavSidebar } from './components/NavSidebar'
+import { MlStatusCard, NextQuestionsCard, SourcesCard } from './components/OverviewCards'
+import { mlLabel } from './present'
 import { loadConversations, saveConversation } from './conversations'
 import { conversationTitle, dataMode, executionNote, MODE_TEXT, planLabel, tableToChart } from './insights'
 import type { AssistantMessage, Message, Overview, TableSpec } from './types'
@@ -99,20 +101,45 @@ describe('adgangstoken', () => {
 })
 
 describe('brugerflade', () => {
-  it('panelet viser demodata tydeligt og sender næste spørgsmål', () => {
-    const onAsk = vi.fn()
-    render(<InsightsPanel overview={overview(true)} mode="demo" questions={['Hvilke varer udløber snart?']} onAsk={onAsk}
-      onOpenSource={() => {}} busy={false} />)
-    expect(screen.getAllByText('Demodata')).toHaveLength(2)
+  it('navigationen har Overblik, AI-assistent og Analyser - ingen Datakilder-side', () => {
+    const onView = vi.fn()
+    render(<NavSidebar view="assistant" onView={onView} onNewChat={() => {}} conversations={[]} activeConversation=""
+      onOpenConversation={() => {}} open={false} onClose={() => {}} />)
+    const nav = screen.getByRole('navigation')
+    expect([...nav.querySelectorAll('button')].map((b) => b.textContent?.trim())).toEqual(['Overblik', 'AI-assistent', 'Analyser'])
+    expect(screen.queryByText('Datakilder')).toBeNull()
+    fireEvent.click(screen.getByText('Analyser'))
+    expect(onView).toHaveBeenCalledWith('analyses')
+  })
+
+  it('datakilderne på Overblik er kun til orientering og linker ikke videre', () => {
+    render(<SourcesCard overview={overview(true)} />)
     expect(screen.getByText('Måltider')).toBeInTheDocument()
-    expect(screen.getByText('Demo')).toBeInTheDocument()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('overblikket viser datakilder og sender et foreslået spørgsmål', () => {
+    const onAsk = vi.fn()
+    render(<>
+      <SourcesCard overview={overview(true)} />
+      <NextQuestionsCard questions={['Hvilke varer udløber snart?']} onAsk={onAsk} disabled={false} />
+    </>)
+    expect(screen.getByText('Måltider')).toBeInTheDocument()
+    expect(screen.getByText('1.200 rækker')).toBeInTheDocument()
     fireEvent.click(screen.getByText('Hvilke varer udløber snart?'))
     expect(onAsk).toHaveBeenCalledWith('Hvilke varer udløber snart?')
   })
 
-  it('panelet viser rigtige data', () => {
-    render(<InsightsPanel overview={overview(false)} mode="real" questions={[]} onAsk={() => {}} onOpenSource={() => {}} busy={false} />)
-    expect(screen.getAllByText('Rigtige data')).toHaveLength(2)
+  it('ML-status gentager ikke demo-mærkater, men kalder aldrig syntetiske modeller klar', () => {
+    render(<MlStatusCard overview={overview(true)} />)
+    expect(screen.queryByText('Demo')).toBeNull()
+    expect(screen.queryByText('Klar')).toBeNull()
+    expect(screen.getByText('Trænet')).toBeInTheDocument()
+    expect(mlLabel({ ...overview(true).ml_status[0], status: 'on_demand' })).toBe('På forespørgsel')
+  })
+
+  it('ML-status viser rigtige, produktionsklare modeller', () => {
+    render(<MlStatusCard overview={overview(false)} />)
     expect(screen.getByText('Klar')).toBeInTheDocument()
     expect(screen.getByText('Trænet i Databricks')).toBeInTheDocument()
   })
@@ -120,21 +147,21 @@ describe('brugerflade', () => {
   it('modeller fra det lokale lakehouse vises som trænet lokalt', () => {
     const local: Overview = { ...overview(false), data_source: 'local_lakehouse',
       ml_status: [{ ...overview(false).ml_status[0], source: 'local_lakehouse' }] }
-    render(<InsightsPanel overview={local} mode="real" questions={[]} onAsk={() => {}} onOpenSource={() => {}} busy={false} />)
+    render(<MlStatusCard overview={local} />)
     expect(screen.getByText('Trænet lokalt · MLflow')).toBeInTheDocument()
     expect(screen.queryByText('Trænet i Databricks')).toBeNull()
   })
 
-  it('svarkortet viser analysetype, datagrundlag og kan vise tabellen som graf', () => {
+  it('svarkortet viser spørgsmål, analysetype, datagrundlag og kan vise tabellen som graf', () => {
     const msg: AssistantMessage = {
       role: 'assistant', id: 'a', text: 'Morgenmad bliver oftest sprunget over.', status: 'done', demo: true,
       plan: ['SQL', 'Statistik'],
       steps: [{ id: 's1', tool: 'run_sql', input: { title: 'Sprungne måltider' }, status: 'ok', sql: 'SELECT meal_slot FROM meal_events', rowCount: 3 }],
       visuals: [{ kind: 'table', id: 't1', table }],
     }
-    render(<MessageView msg={msg} mode="demo" />)
+    render(<MessageView msg={msg} mode="demo" question="Hvilke måltider bliver oftest sprunget over?" />)
+    expect(screen.getByRole('heading', { name: 'Hvilke måltider bliver oftest sprunget over?' })).toBeInTheDocument()
     expect(screen.getByText('Analyse: Statistik')).toBeInTheDocument()
-    expect(screen.getByText('Baseret på demodata')).toBeInTheDocument()
     expect(screen.queryByText('SELECT meal_slot FROM meal_events')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /Se datagrundlag/ }))
     expect(screen.getByText('SELECT meal_slot FROM meal_events')).toBeInTheDocument()
@@ -142,5 +169,30 @@ describe('brugerflade', () => {
     fireEvent.click(screen.getByRole('button', { name: /Vis som graf/ }))
     expect(screen.queryByRole('table')).toBeNull()
     expect(screen.getByRole('figure', { name: 'Sprungne måltider' })).toBeInTheDocument()
+  })
+
+  it('svarkortet viser vigtig indsigt og forslag i egne felter', () => {
+    const msg: AssistantMessage = {
+      role: 'assistant', id: 'a', status: 'done', steps: [], visuals: [{ kind: 'table', id: 't1', table }],
+      text: 'Morgenmad springes oftest over.\n\n### Vigtig indsigt\nHver tredje morgenmad springes over.\n\n### Forslag til MealMind\n- Påmind om morgenmad',
+    }
+    render(<MessageView msg={msg} mode="demo" question="Q" />)
+    expect(screen.getByRole('complementary', { name: 'Vigtig indsigt' })).toHaveTextContent('Hver tredje morgenmad')
+    expect(screen.getByRole('complementary', { name: 'Forslag til MealMind' })).toHaveTextContent('Påmind om morgenmad')
+    expect(screen.queryByText('### Vigtig indsigt')).toBeNull()
+  })
+
+  it('fejl i et svar kan prøves igen', () => {
+    const onRetry = vi.fn()
+    const msg: AssistantMessage = { role: 'assistant', id: 'a', text: '', status: 'error', error: 'Serverfejl (500)', steps: [], visuals: [] }
+    render(<MessageView msg={msg} mode="demo" question="Hvor mange måltider?" onRetry={onRetry} />)
+    expect(screen.getByRole('alert')).toHaveTextContent('Serverfejl (500)')
+    fireEvent.click(screen.getByRole('button', { name: /Prøv igen/ }))
+    expect(onRetry).toHaveBeenCalledWith('Hvor mange måltider?')
+  })
+
+  it('brugerbeskeder vises ikke som selvstændige bobler', () => {
+    const { container } = render(<MessageView msg={{ role: 'user', id: 'u', text: 'Hej' }} mode="demo" />)
+    expect(container).toBeEmptyDOMElement()
   })
 })

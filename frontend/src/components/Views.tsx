@@ -1,76 +1,123 @@
-import { MODE_TEXT, nf, type DataMode } from '../insights'
-import type { DatasetsResponse, Message, Overview, QuickAction } from '../types'
+import { nf } from '../insights'
+import type { Suggestion } from '../present'
+import type { Message, Overview } from '../types'
 import { ChartView } from './ChartView'
-import { DataTable } from './DataTable'
-import { ActionIcon, SourceIcon } from './Icons'
-import { MlStatusCard, NextQuestionsCard, SourcesCard } from './InsightsPanel'
+import { IconChat, IconDatabase, IconLayers, IconNetwork, SuggestionIcon } from './Icons'
+import { MlStatusCard, NextQuestionsCard, SourcesCard } from './OverviewCards'
+import { TableResult } from './ResultCards'
 
-export function QuickActions({ actions, onAsk, disabled }: { actions: QuickAction[]; onAsk: (q: string) => void; disabled: boolean }) {
+export function SuggestionCards({ items, onAsk, disabled }: { items: Suggestion[]; onAsk: (q: string) => void; disabled: boolean }) {
+  if (items.length === 0) return null
   return (
-    <div className="chips" role="group" aria-label="Foreslåede spørgsmål">
-      {actions.map((a) => (
-        <button key={a.label} type="button" className="chip" onClick={() => onAsk(a.question)} disabled={disabled} title={a.question}>
-          <ActionIcon icon={a.icon} /> {a.label}
+    <div className="suggestions" role="group" aria-label="Foreslåede spørgsmål">
+      {items.map((s) => (
+        <button key={s.question} type="button" className="suggestion" onClick={() => onAsk(s.question)} disabled={disabled}
+          title={s.question}>
+          <span className="suggestion-icon"><SuggestionIcon icon={s.icon} /></span>
+          <span className="suggestion-text">{s.label}</span>
         </button>
       ))}
     </div>
   )
 }
 
+/** Diskrete, dekorative blade øverst til højre - samme grønne toner som logoet. */
+function HeroLeaves() {
+  return (
+    <svg className="hero-leaves" viewBox="0 0 320 260" aria-hidden focusable="false">
+      <defs>
+        <linearGradient id="leafA" x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0" stopColor="var(--leaf-light)" stopOpacity="0.05" />
+          <stop offset="1" stopColor="var(--leaf-light)" stopOpacity="0.55" />
+        </linearGradient>
+        <linearGradient id="leafB" x1="1" y1="1" x2="0" y2="0">
+          <stop offset="0" stopColor="var(--leaf-dark)" stopOpacity="0.1" />
+          <stop offset="1" stopColor="var(--leaf-light)" stopOpacity="0.35" />
+        </linearGradient>
+      </defs>
+      <path d="M210 250c-10-90 20-170 100-230 14 100-22 190-100 230Z" fill="url(#leafA)" />
+      <path d="M210 250C228 170 262 100 306 24" stroke="var(--leaf-light)" strokeOpacity="0.35" strokeWidth="1.5" fill="none" />
+      <path d="M150 230c-50-40-70-100-50-170 60 30 85 95 50 170Z" fill="url(#leafB)" />
+    </svg>
+  )
+}
+
 export function Hero({ compact }: { compact?: boolean }) {
   return (
     <header className={`hero ${compact ? 'hero-compact' : ''}`}>
-      <div className="eyebrow">Dit overblik</div>
-      <h1>Fra data til indsigt.</h1>
-      <p className="hero-sub">Spørg til måltider, indkøb og vaner.</p>
+      <HeroLeaves />
+      <div className="eyebrow">Din AI-assistent til madindsigt</div>
+      <h1>Få mere ud af dine <span className="accent-text">måltidsdata</span></h1>
+      <p className="hero-sub">
+        Stil spørgsmål på almindeligt sprog, og få indsigt i måltider, indkøb, ernæring og brugere.
+        {!compact && <> MealMind Insights omsætter dine data til klare svar og handlinger.</>}
+      </p>
     </header>
   )
 }
 
-export function OverviewView({ overview, mode, questions, onAsk, onOpenSources, busy }: {
-  overview: Overview | null; mode: DataMode | null; questions: string[]; onAsk: (q: string) => void
-  onOpenSources: () => void; busy: boolean
-}) {
+function PageHead({ title, sub }: { title: string; sub: string }) {
   return (
-    <div className="view">
-      <Hero />
-      <QuickActions actions={overview?.quick_actions ?? []} onAsk={onAsk} disabled={busy} />
-      {mode && (
-        <div className={`mode-explainer mode-${mode}`}>
-          <strong>{MODE_TEXT[mode].badge}.</strong>{' '}
-          {mode === 'real'
-            ? 'Svarene bygger på pseudonymiserede MealMind-data med kun læseadgang. Brugere kendes kun som pseudonyme nøgler.'
-            : 'Svarene bygger på syntetiske data genereret til afprøvning – ikke rigtige MealMind-brugere. ML-resultater er ikke produktionsklare.'}
-        </div>
-      )}
+    <header className="page-head">
+      <h1>{title}</h1>
+      <p>{sub}</p>
+    </header>
+  )
+}
+
+export function OverviewView({ overview, questions, onAsk, busy }: {
+  overview: Overview | null; questions: string[]; onAsk: (q: string) => void; busy: boolean
+}) {
+  const data = overview?.sources.filter((s) => s.kind !== 'ml') ?? []
+  const rows = data.reduce((sum, s) => sum + (s.rows ?? 0), 0)
+  const models = overview?.ml_status.length ?? 0
+  const tiles = [
+    { label: 'Datasæt', value: overview ? nf.format(data.length) : '–', Icon: IconDatabase },
+    { label: 'Registreringer i alt', value: overview ? nf.format(rows) : '–', Icon: IconLayers },
+    { label: 'ML-modeller', value: overview ? nf.format(models) : '–', Icon: IconNetwork },
+  ]
+  return (
+    <div className="page">
+      <PageHead title="Overblik" sub="Hvad MealMind Insights kan svare på, og hvilke data svarene bygger på." />
+      <ul className="tile-row">
+        {tiles.map(({ label, value, Icon }) => (
+          <li key={label} className="tile">
+            <span className="round-icon"><Icon /></span>
+            <span className="tile-text">
+              <span className="tile-value">{value}</span>
+              <span className="tile-label">{label}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
       <div className="overview-grid">
-        <SourcesCard overview={overview} mode={mode} onOpen={onOpenSources} />
         <NextQuestionsCard questions={questions} onAsk={onAsk} disabled={busy} />
+        <SourcesCard overview={overview} />
         <MlStatusCard overview={overview} />
       </div>
     </div>
   )
 }
 
-export function AnalysesView({ messages, onAsk, actions, busy }: { messages: Message[]; onAsk: (q: string) => void; actions: QuickAction[]; busy: boolean }) {
+export function AnalysesView({ messages, onAsk, suggestions, busy }: {
+  messages: Message[]; onAsk: (q: string) => void; suggestions: Suggestion[]; busy: boolean
+}) {
   const items: { question: string; id: string; node: React.ReactNode }[] = []
   let question = ''
   for (const m of messages) {
     if (m.role === 'user') question = m.text
     else for (const v of m.visuals) {
-      items.push({ question, id: v.id, node: v.kind === 'chart' ? <ChartView spec={v.chart} /> : <DataTable spec={v.table} /> })
+      items.push({ question, id: v.id, node: v.kind === 'chart' ? <ChartView spec={v.chart} /> : <TableResult spec={v.table} /> })
     }
   }
   return (
-    <div className="view">
-      <header className="view-head">
-        <h1>Analyser</h1>
-        <p className="muted">Grafer og tabeller fra den aktuelle samtale.</p>
-      </header>
+    <div className="page">
+      <PageHead title="Analyser" sub="Alle grafer og oversigter fra den aktuelle samtale samlet ét sted." />
       {items.length === 0 ? (
         <div className="empty-card">
-          <p>Ingen analyser endnu. Stil et spørgsmål, så samles graferne og tabellerne her.</p>
-          <QuickActions actions={actions} onAsk={onAsk} disabled={busy} />
+          <span className="round-icon"><IconChat /></span>
+          <p>Ingen analyser endnu. Stil et spørgsmål, så samles graferne og oversigterne her.</p>
+          <SuggestionCards items={suggestions} onAsk={onAsk} disabled={busy} />
         </div>
       ) : (
         <div className="analysis-grid">
@@ -81,59 +128,6 @@ export function AnalysesView({ messages, onAsk, actions, busy }: { messages: Mes
             </section>
           ))}
         </div>
-      )}
-    </div>
-  )
-}
-
-export function SourcesView({ datasets, overview, mode, focus }: {
-  datasets: DatasetsResponse | null; overview: Overview | null; mode: DataMode | null; focus: string | null
-}) {
-  const titles = new Map(overview?.sources.map((s) => [s.table, s]) ?? [])
-  return (
-    <div className="view">
-      <header className="view-head">
-        <h1>Datakilder</h1>
-        <p className="muted">
-          {overview?.data_label ?? '…'}{mode ? ` · ${MODE_TEXT[mode].origin}` : ''}. Tabeller og kolonner, som AI-assistenten kan
-          læse (kun læseadgang).
-        </p>
-      </header>
-      {datasets?.tables.map((t) => {
-        const info = titles.get(t.name)
-        return (
-          <details key={t.name} className="dataset" open={focus === t.name || datasets.tables.length <= 2}>
-            <summary>
-              <span className="round-icon"><SourceIcon kind={info?.kind ?? 'other'} /></span>
-              <span className="dataset-title">{info?.title ?? t.name}</span>
-              <code className="dataset-name">{t.name}</code>
-              {t.row_count != null && <span className="muted">{nf.format(t.row_count)} rækker</span>}
-            </summary>
-            {t.description && <p className="dataset-desc">{t.description}</p>}
-            <div className="table-scroll">
-              <table className="columns-table">
-                <thead><tr><th>Kolonne</th><th>Type</th><th>Beskrivelse / eksempler</th></tr></thead>
-                <tbody>
-                  {t.columns.map((c) => (
-                    <tr key={c.name}>
-                      <td><code>{c.name}</code></td>
-                      <td className="muted">{c.type.toLowerCase()}</td>
-                      <td>{c.description || <span className="muted">{c.sample_values.slice(0, 4).join(', ')}</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </details>
-        )
-      })}
-      {datasets && (
-        <section className="panel-card">
-          <h2>ML-funktioner i AI-assistenten</h2>
-          <ul className="fn-list">
-            {datasets.ml_functions.map((f) => <li key={f.name}><code>{f.name}</code> <span className="muted">{f.description.split('. ')[0]}.</span></li>)}
-          </ul>
-        </section>
       )}
     </div>
   )

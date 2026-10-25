@@ -20,6 +20,8 @@ export interface TableSpec {
   rows: Record<string, Cell>[]
   total_rows: number
   sql?: string | null
+  /** Visning valgt af AI'en: tabel, kort med konkrete varer/retter eller nøgletal. */
+  display?: 'table' | 'cards' | 'stats'
 }
 
 export type AgentEvent =
@@ -64,34 +66,14 @@ export interface AssistantMessage {
   visuals: Visual[]
   status: 'streaming' | 'done' | 'error'
   error?: string
+  /** Tidspunkt for spørgsmålet (ms); mangler i samtaler gemt før redesignet. */
+  createdAt?: number
   demo?: boolean
   plan?: string[]
   notices?: string[]
 }
 
 export type Message = UserMessage | AssistantMessage
-
-export interface DatasetColumn {
-  name: string
-  type: string
-  description?: string
-  sample_values: string[]
-}
-
-export interface Dataset {
-  name: string
-  description: string
-  row_count: number | null
-  columns: DatasetColumn[]
-}
-
-export interface DatasetsResponse {
-  demo: boolean
-  data_source: string
-  data_label?: string
-  tables: Dataset[]
-  ml_functions: { name: string; description: string }[]
-}
 
 export interface Health {
   status: string

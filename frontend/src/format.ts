@@ -9,7 +9,7 @@ export function isDateLike(v: string): boolean {
 
 export function formatValue(v: Cell | undefined, short = false): string {
   if (v === null || v === undefined) return '–'
-  if (typeof v === 'number') return short && Math.abs(v) >= 10_000 ? compact.format(v) : nf.format(v)
+  if (typeof v === 'number') return short && Math.abs(v) >= 1_000_000 ? compact.format(v) : nf.format(v)
   if (typeof v === 'boolean') return v ? 'ja' : 'nej'
   if (isDateLike(v)) return v.endsWith('T00:00:00') ? v.slice(0, 10) : v.replace('T', ' ').slice(0, 16)
   return v

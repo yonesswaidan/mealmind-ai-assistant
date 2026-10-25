@@ -1,27 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AuthError, fetchDatasets, fetchHealth, fetchOverview, historyFor, setToken, streamChat } from './api'
-import { IconArrowUp, IconMenu, IconSpark, IconStop, LeafLogo } from './components/Icons'
-import { InsightsPanel } from './components/InsightsPanel'
+import { AuthError, fetchHealth, fetchOverview, historyFor, setToken, streamChat } from './api'
+import { IconAlert, IconArrowUp, IconMenu, IconSpark, IconStop, LeafLogo } from './components/Icons'
 import { MessageView } from './components/MessageView'
 import { NavSidebar, type View } from './components/NavSidebar'
-import { AnalysesView, Hero, OverviewView, QuickActions, SourcesView } from './components/Views'
+import { AnalysesView, Hero, OverviewView, SuggestionCards } from './components/Views'
 import { loadConversations, saveConversation, type StoredConversation } from './conversations'
-import { MODE_TEXT, dataMode, executionNote } from './insights'
+import { dataMode } from './insights'
+import { suggestionsFrom } from './present'
 import { applyEvent } from './reducer'
-import type { AssistantMessage, DatasetsResponse, Health, Message, Overview, SourceInfo } from './types'
+import type { AssistantMessage, Health, Message, Overview } from './types'
 
 let idCounter = 0
 const newId = (prefix = 'm') => `${prefix}${Date.now()}-${idCounter++}`
+// Følg nye beskeder, så længe brugeren er tæt på bunden; har de scrollet op for at læse, flyttes de ikke.
+const STICK_PX = 140
 
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null)
-  const [datasets, setDatasets] = useState<DatasetsResponse | null>(null)
   const [overview, setOverview] = useState<Overview | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [conversationId, setConversationId] = useState(() => newId('c'))
   const [conversations, setConversations] = useState<StoredConversation[]>(() => loadConversations())
   const [view, setView] = useState<View>('assistant')
-  const [sourceFocus, setSourceFocus] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [needToken, setNeedToken] = useState(false)
@@ -29,20 +29,19 @@ export default function App() {
   const [loadError, setLoadError] = useState('')
   const [navOpen, setNavOpen] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
-  const endRef = useRef<HTMLDivElement | null>(null)
+  const threadRef = useRef<HTMLDivElement | null>(null)
+  const stickRef = useRef(true)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const load = useCallback(async () => {
     try {
       setHealth(await fetchHealth())
-      const [ds, ov] = await Promise.all([fetchDatasets(), fetchOverview()])
-      setDatasets(ds)
-      setOverview(ov)
+      setOverview(await fetchOverview())
       setNeedToken(false)
       setLoadError('')
     } catch (e) {
       if (e instanceof AuthError) setNeedToken(true)
-      else setLoadError('Kan ikke forbinde til serveren. Kører backend?')
+      else setLoadError('Kan ikke forbinde til serveren. Kontrollér, at MealMind Insights kører, og genindlæs siden.')
     }
   }, [])
 
@@ -51,21 +50,29 @@ export default function App() {
   }, [load])
 
   useEffect(() => {
-    if (view === 'assistant') endRef.current?.scrollIntoView({ block: 'end' })
+    const el = threadRef.current
+    if (view === 'assistant' && el && stickRef.current) el.scrollTo({ top: el.scrollHeight })
   }, [messages, view])
 
   const mode = dataMode(health)
   const asked = useMemo(() => new Set(messages.filter((m) => m.role === 'user').map((m) => m.text)), [messages])
-  const nextQuestions = (overview?.next_questions ?? []).filter((q) => !asked.has(q)).slice(0, 3)
+  const suggestions = useMemo(() => suggestionsFrom(overview), [overview])
+  const nextQuestions = useMemo(() => {
+    const all = [...(overview?.next_questions ?? []), ...(overview?.quick_actions.map((a) => a.question) ?? [])]
+    return [...new Set(all)].filter((q) => !asked.has(q)).slice(0, 5)
+  }, [overview, asked])
 
   async function send(text: string) {
     const question = text.trim()
     if (!question || busy) return
     setView('assistant')
     setNavOpen(false)
+    stickRef.current = true
     const history = historyFor(messages)
     const assistantId = newId()
-    const assistant: AssistantMessage = { role: 'assistant', id: assistantId, text: '', steps: [], visuals: [], status: 'streaming' }
+    const assistant: AssistantMessage = {
+      role: 'assistant', id: assistantId, text: '', steps: [], visuals: [], status: 'streaming', createdAt: Date.now(),
+    }
     const convId = conversationId
     let latest: Message[] = [...messages, { role: 'user', id: newId(), text: question }, assistant]
     setMessages(latest)
@@ -81,11 +88,12 @@ export default function App() {
 
     try {
       await streamChat(question, history, (ev) => update((a) => applyEvent(a, ev)), controller.signal)
-      update((a) => (a.status === 'streaming' ? { ...a, status: 'error', error: 'Forbindelsen blev afbrudt.' } : a))
+      update((a) => (a.status === 'streaming' ? { ...a, status: 'error', error: 'Forbindelsen blev afbrudt, før svaret var færdigt.' } : a))
     } catch (e) {
       if (e instanceof AuthError) setNeedToken(true)
       const aborted = controller.signal.aborted
-      update((a) => ({ ...a, status: 'error', error: aborted ? 'Stoppet.' : (e as Error).message }))
+      const message = aborted ? 'Stoppet.' : e instanceof TypeError ? 'Kunne ikke nå serveren. Kontrollér forbindelsen og prøv igen.' : (e as Error).message
+      update((a) => ({ ...a, status: 'error', error: message }))
     } finally {
       setBusy(false)
       abortRef.current = null
@@ -104,29 +112,33 @@ export default function App() {
 
   function openConversation(c: StoredConversation) {
     abortRef.current?.abort()
+    stickRef.current = true
     setMessages(c.messages)
     setConversationId(c.id)
     setView('assistant')
     setNavOpen(false)
   }
 
-  function openSource(s?: SourceInfo) {
-    setSourceFocus(s?.table ?? null)
-    setView('sources')
-  }
+  const disabled = busy || needToken
 
   const banners = (
     <>
-      {health?.source_error && <div className="banner banner-warn" role="alert">{health.source_error}</div>}
+      {health?.source_error && <div className="banner" role="alert"><IconAlert size={18} /> {health.source_error}</div>}
       {health?.read_only_check?.status === 'write_access' && (
-        <div className="banner banner-warn" role="alert">{health.read_only_check.message}</div>
+        <div className="banner" role="alert"><IconAlert size={18} /> {health.read_only_check.message}</div>
       )}
       {health && !health.llm_configured && (
-        <div className="banner banner-warn" role="alert">
-          AI-modellen er ikke konfigureret. Sæt <code>{health.provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'}</code> i <code>.env</code> og genstart backend.
+        <div className="banner" role="alert">
+          <IconAlert size={18} />
+          <span>AI-modellen er ikke sat op. Indsæt <code>{health.provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'}</code> i <code>.env</code> og genstart.</span>
         </div>
       )}
-      {loadError && <div className="banner banner-warn" role="alert">{loadError}</div>}
+      {loadError && (
+        <div className="banner" role="alert">
+          <IconAlert size={18} /> <span>{loadError}</span>
+          <button type="button" className="pill-btn" onClick={() => void load()}>Prøv igen</button>
+        </div>
+      )}
       {needToken && (
         <form className="token-form" onSubmit={(e) => { e.preventDefault(); setToken(tokenInput.trim()); void load() }}>
           <label htmlFor="token">Adgangstoken</label>
@@ -137,6 +149,16 @@ export default function App() {
     </>
   )
 
+  // Hvert svar får det spørgsmål, det besvarer, som titel.
+  let lastQuestion = ''
+  const thread = messages.map((m) => {
+    if (m.role === 'user') {
+      lastQuestion = m.text
+      return null
+    }
+    return <MessageView key={m.id} msg={m} mode={mode} question={lastQuestion} onRetry={(q) => void send(q)} />
+  })
+
   return (
     <div className="app">
       <NavSidebar view={view} onView={(v) => { setView(v); setNavOpen(false) }} onNewChat={newChat}
@@ -146,57 +168,53 @@ export default function App() {
 
       <div className="workspace">
         <header className="topbar">
-          <button className="icon-btn menu-btn" onClick={() => setNavOpen(true)} type="button" aria-label="Åbn menu"><IconMenu /></button>
-          <div className="topbar-brand"><LeafLogo size={26} /> MealMind Insights</div>
-          {mode && (
-            <span className={`mode-badge mode-${mode}`} role="status" title={health?.data_label}>
-              <span className="dot" aria-hidden /> {MODE_TEXT[mode].badge}
-            </span>
-          )}
+          <button className="icon-btn" onClick={() => setNavOpen(true)} type="button" aria-label="Åbn menu"><IconMenu /></button>
+          <div className="topbar-brand"><LeafLogo size={24} /> MealMind Insights</div>
         </header>
 
-        <div className="columns">
-          <main className="main" id="main">
-            {banners}
-            {view === 'assistant' && (
-              <section className="chat-card" aria-label="AI-assistent">
-                <div className="thread">
-                  <Hero compact={messages.length > 0} />
-                  <QuickActions actions={overview?.quick_actions ?? []} onAsk={(q) => void send(q)} disabled={busy || needToken} />
-                  {messages.map((m) => <MessageView key={m.id} msg={m} mode={mode} />)}
-                  <div ref={endRef} />
-                </div>
-                <form className="composer" onSubmit={(e) => { e.preventDefault(); void send(input) }}>
-                  <IconSpark className="composer-icon" />
-                  <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(input) }
-                    }}
-                    placeholder="Stil et spørgsmål om dine data…" rows={1} maxLength={4000} aria-label="Spørgsmål" disabled={needToken} />
-                  {busy ? (
-                    <button type="button" className="send-btn" onClick={() => abortRef.current?.abort()} aria-label="Stop"><IconStop /></button>
-                  ) : (
-                    <button type="submit" className="send-btn" disabled={!input.trim() || needToken} aria-label="Send"><IconArrowUp /></button>
-                  )}
-                </form>
-              </section>
-            )}
-            {view === 'overview' && (
-              <OverviewView overview={overview} mode={mode} questions={nextQuestions} onAsk={(q) => void send(q)}
-                onOpenSources={() => openSource()} busy={busy || needToken} />
-            )}
-            {view === 'analyses' && (
-              <AnalysesView messages={messages} onAsk={(q) => void send(q)} actions={overview?.quick_actions ?? []} busy={busy || needToken} />
-            )}
-            {view === 'sources' && <SourcesView datasets={datasets} overview={overview} mode={mode} focus={sourceFocus} />}
+        {view === 'assistant' ? (
+          <main className="chat" id="main" aria-label="AI-assistent">
+            <div className="thread" ref={threadRef}
+              onScroll={(e) => {
+                const el = e.currentTarget
+                stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX
+              }}>
+              <div className="thread-inner">
+                {banners}
+                <Hero compact={messages.length > 0} />
+                <SuggestionCards items={suggestions} onAsk={(q) => void send(q)} disabled={disabled} />
+                {thread}
+              </div>
+            </div>
+            <div className="composer-row">
+              <form className="composer" onSubmit={(e) => { e.preventDefault(); void send(input) }}>
+                <IconSpark className="composer-icon" />
+                <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(input) }
+                  }}
+                  placeholder="Skriv dit spørgsmål her..." rows={1} maxLength={4000} aria-label="Spørgsmål" disabled={needToken} />
+                {busy ? (
+                  <button type="button" className="send-btn" onClick={() => abortRef.current?.abort()} aria-label="Stop"><IconStop /></button>
+                ) : (
+                  <button type="submit" className="send-btn" disabled={!input.trim() || needToken} aria-label="Send"><IconArrowUp /></button>
+                )}
+              </form>
+            </div>
           </main>
-
-          <aside className="side" aria-label="Datakilder og ML-status">
-            <InsightsPanel overview={overview} mode={mode} questions={nextQuestions} onAsk={(q) => void send(q)}
-              onOpenSource={openSource} busy={busy || needToken} />
-            {mode && <p className="side-foot">{MODE_TEXT[mode].footer} · {executionNote(health)}</p>}
-          </aside>
-        </div>
+        ) : (
+          <main className="scroll-main" id="main">
+            <div className="page-wrap">
+              {banners}
+              {view === 'overview' && (
+                <OverviewView overview={overview} questions={nextQuestions} onAsk={(q) => void send(q)} busy={disabled} />
+              )}
+              {view === 'analyses' && (
+                <AnalysesView messages={messages} onAsk={(q) => void send(q)} suggestions={suggestions} busy={disabled} />
+              )}
+            </div>
+          </main>
+        )}
       </div>
     </div>
   )

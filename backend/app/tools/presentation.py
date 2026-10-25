@@ -8,6 +8,7 @@ from app.tools.results import ResultStore, ToolError, json_value, require_column
 MAX_CHART_POINTS = 400
 MAX_CATEGORIES = 40
 MAX_SERIES = 8  # antal kategoriske farver i paletten; flere serier ville genbruge farver
+MAX_STATS = 8  # nøgletal-kort; flere rækker vises som tabel
 
 
 class ChartInput(BaseModel):
@@ -27,6 +28,7 @@ class TableInput(BaseModel):
     title: str
     columns: list[str] | None = None
     max_rows: int = Field(default=50, ge=1, le=500)
+    display: Literal["table", "cards", "stats"] = "table"
 
 
 CHART_SCHEMA = {
@@ -55,6 +57,10 @@ TABLE_SCHEMA = {
         "title": {"type": "string"},
         "columns": {"type": "array", "items": {"type": "string"}},
         "max_rows": {"type": "integer"},
+        "display": {"type": "string", "enum": ["table", "cards", "stats"],
+                    "description": "Visning: 'table' (standard), 'cards' til konkrete varer/retter/ingredienser "
+                                   "(første kolonne = navn, højst ca. 12 rækker), 'stats' til 1-8 nøgletal "
+                                   "(én række med talkolonner, eller rækker med navn + tal)."},
     },
     "required": ["result_id", "title"],
 }
@@ -110,6 +116,8 @@ def build_table(store: ResultStore, p: TableInput) -> dict:
     if p.columns:
         require_columns(df, *p.columns)
         df = df[p.columns]
+    if p.display == "stats" and len(df) > MAX_STATS:
+        raise ToolError(f"display='stats' passer til højst {MAX_STATS} rækker. Brug 'table' eller aggreger først.")
     return {
         "title": p.title,
         "result_id": result.id,
@@ -117,4 +125,5 @@ def build_table(store: ResultStore, p: TableInput) -> dict:
         "rows": to_records(df, p.max_rows),
         "total_rows": len(df),
         "sql": result.sql,
+        "display": p.display,
     }

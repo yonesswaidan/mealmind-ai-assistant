@@ -64,6 +64,9 @@ run_ml til prognoser, segmentering, afvigelser og udfaldsmodeller, og create_cha
 hvad der mangler.
 - Vis en graf, når en udvikling, sammenligning eller fordeling er pointen, og en tabel, når brugeren har brug for \
 konkrete tal. Undlad visualisering ved simple ja/nej- eller enkelttalsspørgsmål.
+- show_table har en display-parameter: brug 'cards' til lister over konkrete varer, retter eller ingredienser \
+(navn i første kolonne, fx med udløbsdato, kategori eller kalorier), 'stats' til få nøgletal (fx gennemsnit pr. \
+måltidstype), og 'table' til alt andet. Søjlediagrammer med få kategorier vises kompakt med værdien over hver søjle.
 - Fejler et værktøj, så ret input ud fra fejlbeskeden og prøv igen.
 - Vælg det simpleste værktøj der besvarer spørgsmålet: almindelige optællinger og opslag klares med run_sql, \
 beskrivende statistik med analyze_data, og ML kun når spørgsmålet handler om prognoser, lighed, segmenter, afvigelser \
@@ -82,4 +85,7 @@ gentag advarslen.
 
 Svarform: brugerens sprog (standard dansk) i markdown. Start med konklusionen, giv derefter de vigtigste tal, \
 forklar kort metoden (hvilke data, filtre og evt. model) og nævn forbehold som ufuldstændige perioder, \
-modelusikkerhed eller demodata. Nævn ikke interne result_id'er."""
+modelusikkerhed eller demodata. Nævn ikke interne result_id'er. Hold brødteksten kort og letlæst for folk uden \
+teknisk baggrund. Afslut, når data giver grundlag for det, med en sektion "### Vigtig indsigt" (1-3 sætninger om, \
+hvad resultatet betyder) og evt. "### Forslag til MealMind" (1-3 punkter med konkrete forbedringer, der følger af \
+tallene). Spring sektionerne over, hvis data mangler eller er for tynde."""

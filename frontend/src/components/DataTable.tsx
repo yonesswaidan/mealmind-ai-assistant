@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { formatValue, toCsv } from '../format'
+import { toCsv } from '../format'
+import { columnLabel, displayValue } from '../present'
 import type { TableSpec } from '../types'
 
 export function DataTable({ spec }: { spec: TableSpec }) {
@@ -36,16 +37,16 @@ export function DataTable({ spec }: { spec: TableSpec }) {
     <section className="card table-card" aria-label={spec.title}>
       <div className="card-head">
         <div className="card-title">{spec.title}</div>
-        <button className="ghost-btn" onClick={download} type="button">CSV</button>
+        <button className="pill-btn" onClick={download} type="button">Hent CSV</button>
       </div>
       <div className="table-scroll">
         <table>
           <thead>
             <tr>
               {spec.columns.map((c) => (
-                <th key={c} className={numeric.has(c) ? 'num' : undefined}>
+                <th key={c} className={numeric.has(c) ? 'num' : undefined} title={c}>
                   <button type="button" onClick={() => setSort((s) => ({ col: c, desc: s?.col === c ? !s.desc : true }))}>
-                    {c}
+                    {columnLabel(c)}
                     {sort?.col === c && <span aria-hidden>{sort.desc ? ' ↓' : ' ↑'}</span>}
                   </button>
                 </th>
@@ -56,7 +57,7 @@ export function DataTable({ spec }: { spec: TableSpec }) {
             {rows.map((r, i) => (
               <tr key={i}>
                 {spec.columns.map((c) => (
-                  <td key={c} className={numeric.has(c) ? 'num' : undefined}>{formatValue(r[c])}</td>
+                  <td key={c} className={numeric.has(c) ? 'num' : undefined}>{displayValue(r[c])}</td>
                 ))}
               </tr>
             ))}

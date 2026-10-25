@@ -1,13 +1,12 @@
 import type { StoredConversation } from '../conversations'
-import { IconBars, IconChat, IconClock, IconClose, IconDatabase, IconHome, IconPlus, LeafLogo } from './Icons'
+import { IconBars, IconChat, IconClock, IconClose, IconHome, IconPlus, IconSpark, LeafLogo } from './Icons'
 
-export type View = 'overview' | 'assistant' | 'analyses' | 'sources'
+export type View = 'overview' | 'assistant' | 'analyses'
 
 const NAV: { view: View; label: string; Icon: typeof IconHome }[] = [
   { view: 'overview', label: 'Overblik', Icon: IconHome },
   { view: 'assistant', label: 'AI-assistent', Icon: IconChat },
   { view: 'analyses', label: 'Analyser', Icon: IconBars },
-  { view: 'sources', label: 'Datakilder', Icon: IconDatabase },
 ]
 
 interface Props {
@@ -34,7 +33,7 @@ export function NavSidebar({ view, onView, onNewChat, conversations, activeConve
       </div>
 
       <button className="btn btn-primary btn-block" onClick={onNewChat} type="button">
-        <IconPlus /> Ny samtale
+        <IconPlus size={18} /> Ny samtale
       </button>
 
       <nav className="nav-list">
@@ -64,7 +63,15 @@ export function NavSidebar({ view, onView, onNewChat, conversations, activeConve
         )}
       </div>
 
-      {model && <div className="nav-foot">AI-model: {model}</div>}
+      {model && (
+        <div className="nav-foot">
+          <span className="nav-foot-icon" aria-hidden><IconSpark size={18} /></span>
+          <span className="nav-foot-text">
+            <span className="nav-foot-title">AI-model</span>
+            <span className="nav-foot-sub">{model}</span>
+          </span>
+        </div>
+      )}
     </aside>
   )
 }

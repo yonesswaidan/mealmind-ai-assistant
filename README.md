@@ -20,17 +20,23 @@ som testdata – og AI'en får besked på aldrig at præsentere dem som rigtige 
 
 ## Brugerfladen
 
-Lys, dansk brugerflade med mørkegrønne detaljer, tilpasset computer og mobil:
+Mørkegrøn, dansk brugerflade med mintgrønne detaljer, tilpasset computer, tablet og mobil:
 
-- **AI-assistent**: overskrift, foreslåede spørgsmål (*Vis ugens overblik*, *Find afvigelser*, *Find lignende retter*),
-  chat med svarkort, der viser analysetypen (fx *Analyse: Statistik*), grafer/tabeller, *Se datagrundlag* (SQL og
-  ML-detaljer) og *Vis som graf*.
-- **Højre panel** (computer) / **Overblik** (mobil): *Dine datakilder* med rækketal og datatilstand,
-  *Næste gode spørgsmål* og *ML-status* (fra `gold.ml_model_status` i Databricks, ellers de lokale ML-funktioner).
-- **Analyser**: alle grafer og tabeller fra samtalen. **Datakilder**: tabeller, kolonner og beskrivelser.
-- **Seneste samtaler** gemmes kun i browseren.
-- Datatilstanden står altid øverst: **Demotilstand**, **Testdata** (syntetisk udtræk eller `mealmind_dev`) eller
-  **Rigtige data**. Forslag og ML-status hentes fra `/api/overview` og tilpasses de tabeller, der findes.
+- **AI-assistent** (forsiden): overskrift, klikbare forslag til spørgsmål (hentet fra `/api/overview`, så de altid
+  passer til de tabeller, der findes) og et stort inputfelt nederst. Hvert svar er et kort med spørgsmålet som titel,
+  analysetypen (fx *Analyse: Statistik*), kort brødtekst og resultaterne:
+  - grafer – få kategorier vises som kompakte søjler med værdien over hver søjle,
+  - **kort** med konkrete varer/retter (`show_table` med `display: "cards"`) – udløb beregnes ud fra datoen i data,
+  - **nøgletal** (`display: "stats"`) og almindelige tabeller,
+  - felterne *Vigtig indsigt* og *Forslag til MealMind*, når AI'en afslutter svaret med de sektioner.
+
+  *Se datagrundlag* viser SQL og ML-detaljer, *Vis som graf* laver en graf af en tabel, og fejl kan prøves igen.
+- **Overblik**: nøgletal, gode spørgsmål, en kort oversigt over datagrundlaget og ML-status. **Analyser**: alle
+  grafer og oversigter fra samtalen. Der er ingen separat side med tabeller og kolonner; AI-assistenten har stadig
+  adgang til alle tabeller internt, og `/api/datasets` findes fortsat i backend.
+- **Seneste samtaler** gemmes kun i browseren. På mobil og tablet foldes menuen sammen.
+- Der vises ingen mærkat om datagrundlaget i brugerfladen. Syntetiske data markeres stadig internt, AI'en får
+  besked på aldrig at præsentere dem som rigtige brugere, og en model trænet på syntetiske data vises aldrig som *Klar*.
 
 Første demonstration hele vejen gennem Databricks: se `biteowl/data-platform/docs/DEMO.md`.
 

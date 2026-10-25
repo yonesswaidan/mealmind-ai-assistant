@@ -13,8 +13,8 @@ function Svg({ size = 20, children, ...rest }: IconProps & { children: React.Rea
 
 export const LeafLogo = ({ size = 32 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden focusable="false">
-    <path d="M15 27C8 26 3.5 20.5 4 12.5 11 13 15.5 18 15 27Z" fill="var(--brand-700)" />
-    <path d="M17 27c-.6-9.5 4.5-17 11-19 .8 10-4 18-11 19Z" fill="var(--brand-400)" />
+    <path d="M15 27C8 26 3.5 20.5 4 12.5 11 13 15.5 18 15 27Z" fill="var(--leaf-dark)" />
+    <path d="M17 27c-.6-9.5 4.5-17 11-19 .8 10-4 18-11 19Z" fill="var(--leaf-light)" />
   </svg>
 )
 
@@ -51,15 +51,27 @@ export const IconMenu = (p: IconProps) => <Svg {...p}><path d="M4 7h16M4 12h16M4
 export const IconClose = (p: IconProps) => <Svg {...p}><path d="M6 6l12 12M18 6 6 18" /></Svg>
 export const IconTable = (p: IconProps) => <Svg {...p}><rect x="4" y="5" width="16" height="14" rx="1.5" /><path d="M4 10h16M10 10v9" /></Svg>
 
+export const IconUsers = (p: IconProps) => (
+  <Svg {...p}><circle cx="9" cy="8" r="3.2" /><path d="M3.5 19.5c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5M15.5 5.2a3.2 3.2 0 0 1 0 6M17.5 14.6c1.7.6 2.7 2.3 3 4.9" /></Svg>
+)
+export const IconRefresh = (p: IconProps) => <Svg {...p}><path d="M20 11a8 8 0 0 0-14.3-4.3L4 9M4 4v5h5M4 13a8 8 0 0 0 14.3 4.3L20 15M20 20v-5h-5" /></Svg>
+export const IconInfo = (p: IconProps) => <Svg {...p}><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5M12 8h.01" /></Svg>
+export const IconAlert = (p: IconProps) => <Svg {...p}><path d="M12 4 2.8 19.5h18.4L12 4Z" /><path d="M12 10v4M12 17h.01" /></Svg>
+export const IconFlame = (p: IconProps) => (
+  <Svg {...p}><path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.4 2.6-5.4 3.6-8.8 2.2 1.3 3 3.3 3 4.8 1.3-.6 2-1.9 2.2-3.3 2.2 1.8 4.2 4.4 4.2 7.3 0 3.6-2.6 6.2-6.5 6.2Z" /></Svg>
+)
+export const IconLayers = (p: IconProps) => <Svg {...p}><path d="m12 4 8.5 4.5L12 13 3.5 8.5 12 4Z" /><path d="m3.5 12.5 8.5 4.5 8.5-4.5M3.5 16.5 12 21l8.5-4.5" /></Svg>
+
+export function SuggestionIcon({ icon, size }: { icon: string; size?: number }) {
+  if (icon === 'dish') return <IconDish size={size} />
+  if (icon === 'users') return <IconUsers size={size} />
+  if (icon === 'search') return <IconSearch size={size} />
+  return <IconBars size={size} />
+}
+
 export function SourceIcon({ kind, size }: { kind: string; size?: number }) {
   if (kind === 'meals') return <IconDish size={size} />
   if (kind === 'shopping') return <IconCart size={size} />
   if (kind === 'ml') return <IconNetwork size={size} />
   return <IconDatabase size={size} />
-}
-
-export function ActionIcon({ icon, size }: { icon: string; size?: number }) {
-  if (icon === 'search') return <IconSearch size={size} />
-  if (icon === 'dish') return <IconDish size={size} />
-  return <IconBars size={size} />
 }

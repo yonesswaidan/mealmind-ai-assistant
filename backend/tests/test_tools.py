@@ -132,6 +132,20 @@ def test_chart_and_table_events(executor):
     out, _ = run(executor, "show_table", {"result_id": "r1", "title": "Tabel", "max_rows": 3})
     table = out.events[0]["table"]
     assert len(table["rows"]) == 3 and table["total_rows"] > 3 and table["sql"]
+    assert table["display"] == "table"
+
+
+def test_table_display_cards_and_stats(executor):
+    sql(executor, "SELECT city, COUNT(*) AS n FROM meal_events GROUP BY city ORDER BY n DESC")
+    out, _ = run(executor, "show_table", {"result_id": "r1", "title": "Byer", "display": "cards"})
+    assert out.events[0]["table"]["display"] == "cards"
+    out, _ = run(executor, "show_table", {"result_id": "r1", "title": "Byer", "display": "stats"})
+    assert out.events[0]["table"]["display"] == "stats"
+    sql(executor, "SELECT meal_name, COUNT(*) AS n FROM meal_events GROUP BY meal_name")
+    out, msg = run(executor, "show_table", {"result_id": "r2", "title": "Retter", "display": "stats"})
+    assert out.is_error and "højst" in msg
+    out, msg = run(executor, "show_table", {"result_id": "r2", "title": "Retter", "display": "grid"})
+    assert out.is_error and "Ugyldigt input" in msg
 
 
 def test_chart_rejects_non_numeric_y(executor):

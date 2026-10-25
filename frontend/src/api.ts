@@ -1,5 +1,5 @@
 import { createSseParser } from './sse'
-import type { AgentEvent, DatasetsResponse, Health, Message, Overview } from './types'
+import type { AgentEvent, Health, Message, Overview } from './types'
 
 const TOKEN_KEY = 'mealmind-insights-token'
 // Navnet før omdøbningen til MealMind Insights; et gemt token flyttes automatisk til den nye nøgle.
@@ -47,7 +47,6 @@ async function getJson<T>(path: string): Promise<T> {
 }
 
 export const fetchHealth = () => getJson<Health>('/api/health')
-export const fetchDatasets = () => getJson<DatasetsResponse>('/api/datasets')
 export const fetchOverview = () => getJson<Overview>('/api/overview')
 
 export function historyFor(messages: Message[]) {
